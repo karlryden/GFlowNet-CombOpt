@@ -6,6 +6,7 @@ import dgl
 import dgl.function as fn
 from dgl.nn.pytorch.conv import GINConv, GATConv
 from dgl.nn.pytorch.glob import MaxPooling
+from torch_geometric.nn.conv import FiLMConv
 
 """
 GIN architecture
