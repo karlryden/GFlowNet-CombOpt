@@ -115,7 +115,7 @@ class MaxIndSetMDP(GraphCombOptMDP):
         super(MaxIndSetMDP, self).__init__(gbatch, cfg)
 
     # @profile
-    def step(self, action):
+    def step(self, action, prune=True):
         state = self._state.clone()
 
         # label the selected node to be "1"
@@ -124,13 +124,14 @@ class MaxIndSetMDP(GraphCombOptMDP):
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 1
 
-        # label all nodes near the selected node ("1") to be "0"
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = (state == 1).float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            x1_deg = self.gbatch.ndata.pop('h')  # (#node, # of 1-labeled neighbour node)
-        undecided = ~get_decided(state)
-        state[undecided & (x1_deg > 0)] = 0
+        if prune:
+            # label all nodes near the selected node ("1") to be "0"
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = (state == 1).float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                x1_deg = self.gbatch.ndata.pop('h')  # (#node, # of 1-labeled neighbour node)
+            undecided = ~get_decided(state)
+            state[undecided & (x1_deg > 0)] = 0
         self._state = state
 
         decided_tensor = pad_batch(self.get_decided_mask(state), self.numnode_per_graph, padding_value=True)
@@ -152,7 +153,7 @@ class MaxCliqueMDP(GraphCombOptMDP):
     def __init__(self, gbatch, cfg,):
         super(MaxCliqueMDP, self).__init__(gbatch, cfg)
 
-    def step(self, action):
+    def step(self, action, prune=True):
         state = self._state.clone()
 
         # label the selected node to be "1"
@@ -160,17 +161,18 @@ class MaxCliqueMDP(GraphCombOptMDP):
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 1
 
-        # calculate num of "1" for each grpah
-        num1 = pad_batch(state == 1, self.numnode_per_graph, padding_value=0).sum(dim=1)
-        num1 = [num * torch.ones(count).to(self.device) for count, num in zip(self.numnode_per_graph, num1)]
-        num1 = torch.cat(num1) # same shape with state
-        # if a node is not connected to all "1" nodes, label it to be "0"
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = (state == 1).float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            x1_deg = self.gbatch.ndata.pop('h')
-        undecided = ~get_decided(state)
-        state[undecided & (x1_deg < num1)] = 0
+        if prune:
+            # calculate num of "1" for each grpah
+            num1 = pad_batch(state == 1, self.numnode_per_graph, padding_value=0).sum(dim=1)
+            num1 = [num * torch.ones(count).to(self.device) for count, num in zip(self.numnode_per_graph, num1)]
+            num1 = torch.cat(num1) # same shape with state
+            # if a node is not connected to all "1" nodes, label it to be "0"
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = (state == 1).float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                x1_deg = self.gbatch.ndata.pop('h')
+            undecided = ~get_decided(state)
+            state[undecided & (x1_deg < num1)] = 0
         self._state = state
 
         decided_tensor = pad_batch(self.get_decided_mask(state), self.numnode_per_graph, padding_value=True)
@@ -194,7 +196,7 @@ class MinDominateSetMDP(GraphCombOptMDP):
         super(MinDominateSetMDP, self).__init__(gbatch, cfg)
         assert not cfg.back_trajectory
 
-    def step(self, action):
+    def step(self, action, prune=True):
         state = self._state.clone()
 
         # action: delete a node from set (label it to be "0" from "2")
@@ -203,21 +205,22 @@ class MinDominateSetMDP(GraphCombOptMDP):
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 0
 
-        undecided = ~get_decided(state)
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = ((state == 1) | (state == 2)).float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            x12_deg = self.gbatch.ndata.pop('h').int()
-        # or if a "2" has no neighbour in the set, it must stay in the set, too
-        state[undecided & (x12_deg == 0)] = 1
+        if prune:
+            undecided = ~get_decided(state)
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = ((state == 1) | (state == 2)).float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                x12_deg = self.gbatch.ndata.pop('h').int()
+            # or if a "2" has no neighbour in the set, it must stay in the set, too
+            state[undecided & (x12_deg == 0)] = 1
 
-        # this kinds of special "0" needs to have a neighbour stay in the set
-        special0 = (state == 0) & (x12_deg <= 1)
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = special0.float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            xsp0_deg = self.gbatch.ndata.pop('h').int()
-        state[undecided & (xsp0_deg >= 1)] = 1
+            # this kinds of special "0" needs to have a neighbour stay in the set
+            special0 = (state == 0) & (x12_deg <= 1)
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = special0.float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                xsp0_deg = self.gbatch.ndata.pop('h').int()
+            state[undecided & (xsp0_deg >= 1)] = 1
 
         # for the rest "2" node: it and all its neighbours are connected to the set
         # thus can be deleted from the set
@@ -249,7 +252,7 @@ class MaxCutMDP(GraphCombOptMDP):
         super(MaxCutMDP, self).__init__(gbatch, cfg)
         assert not cfg.back_trajectory
 
-    def step(self, action):
+    def step(self, action, prune=True):
         state = self._state.clone()
 
         # action: choose a node to be in the set (label it to be "1" from "2")
@@ -257,18 +260,19 @@ class MaxCutMDP(GraphCombOptMDP):
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 1
 
-        undecided = ~get_decided(state)
-        # if a "2" has more "1" neighbours than "0"or"2" neighbours
-        # it must NOT be in the set, thus label it to be "0"
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = (state == 1).float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            x1_deg = self.gbatch.ndata.pop('h').int()
-        with self.gbatch.local_scope():
-            self.gbatch.ndata["h"] = ((state == 0) | (state == 2)).float()
-            self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
-            x02_deg = self.gbatch.ndata.pop('h').int()
-        state[undecided & (x1_deg > x02_deg)] = 0
+        if prune:
+            undecided = ~get_decided(state)
+            # if a "2" has more "1" neighbours than "0"or"2" neighbours
+            # it must NOT be in the set, thus label it to be "0"
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = (state == 1).float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                x1_deg = self.gbatch.ndata.pop('h').int()
+            with self.gbatch.local_scope():
+                self.gbatch.ndata["h"] = ((state == 0) | (state == 2)).float()
+                self.gbatch.update_all(fn.copy_u("h", "m"), fn.sum("m", "h"))
+                x02_deg = self.gbatch.ndata.pop('h').int()
+            state[undecided & (x1_deg > x02_deg)] = 0
         self._state = state
 
         decided_tensor = pad_batch(self.get_decided_mask(state), self.numnode_per_graph, padding_value=True)
