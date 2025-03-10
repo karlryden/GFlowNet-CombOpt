@@ -6,7 +6,6 @@ import dgl
 import dgl.function as fn
 from dgl.nn.pytorch.conv import GINConv, GATConv
 from dgl.nn.pytorch.glob import MaxPooling
-from torch_geometric.nn.conv import FiLMConv
 
 """
 GIN architecture
@@ -28,12 +27,31 @@ class MLP_GIN(nn.Module):
 
 class GIN(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=5,
-                 graph_level_output=0, learn_eps=False, dropout=0.,
-                 aggregator_type="sum"):
+                 condition_dim=0, graph_level_output=0, learn_eps=False, dropout=0.,
+                 aggregator_type="sum", modulation_type="concat"):
         super().__init__()
 
         self.inp_embedding = nn.Embedding(input_dim, hidden_dim)
         self.hidden_dim = hidden_dim
+        self.condition_dim = condition_dim
+
+        # TODO: Factor out modulation to be composed with the GIN from outside?
+        assert modulation_type in ["concat", "attend", "film"]
+        match modulation_type:
+            case "concat":
+                hidden_dim += condition_dim
+
+            case "film":
+                # TODO: Investigate having a film layer for each layer of the GIN
+                self.film = nn.Linear(condition_dim, 2*hidden_dim)
+
+            case "attend":
+                raise NotImplementedError
+                # TODO: Keys and values need to be of the same dimension. Reduce c? 
+                self.attention = nn.MultiheadAttention(hidden_dim, 1)
+
+        self.modulation_type = modulation_type
+
         self.inp_transform = nn.Identity()
 
         self.ginlayers = nn.ModuleList()
@@ -60,12 +78,38 @@ class GIN(nn.Module):
         self.drop = nn.Dropout(dropout)
         self.pool = MaxPooling()
 
-    def forward(self, g, state, reward_exp=None):
+    # optionally conditioned on signal c
+    def forward(
+            self, 
+            g: dgl.DGLGraph, 
+            state: torch.Tensor, 
+            c: torch.Tensor=None, 
+            reward_exp=None
+        ):
         assert reward_exp is None
 
         h = self.inp_embedding(state)
         h = self.inp_transform(h)
-        # list of hidden representation at each layer
+
+        if c is None:
+            # TODO: Investigate ways to allow unconditioned forward pass. 
+            assert self.condition_dim == 0, "Conditioning signal is not provided."
+
+        else:
+            assert len(c) == self.condition_dim, "Dimension error in conditioning signal."
+            match self.modulation_type:
+                case "concat":
+                    C = c.unsqueeze(0).expand(g.num_nodes(), -1)    # expand to match the number of nodes
+                    h = torch.cat([h, C], dim=1)
+            
+                case "film":
+                    gamma, beta = self.film(c).view(2, self.hidden_dim)
+                    h = gamma*h + beta
+
+                case "attend":
+                    raise NotImplementedError
+
+        # list of hidden representations at each layer
         hidden_rep = [h]
         for i, layer in enumerate(self.ginlayers):
             h = layer(g, h)
