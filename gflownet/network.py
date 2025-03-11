@@ -43,7 +43,9 @@ class GIN(nn.Module):
 
             case "film":
                 # TODO: Investigate having a film layer for each layer of the GIN
-                self.film = nn.Linear(condition_dim, 2*hidden_dim)
+                self.films = nn.ModuleList()
+                for _ in range(num_layers - 1):
+                    self.films.append(nn.Linear(condition_dim, 2*hidden_dim))
 
             case "attend":
                 raise NotImplementedError
@@ -57,7 +59,7 @@ class GIN(nn.Module):
         self.ginlayers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
         assert aggregator_type in ["sum", "mean", "max"]
-        for layer in range(num_layers - 1):  # excluding the input layer
+        for _ in range(num_layers - 1):  # excluding the input layer
             mlp = MLP_GIN(hidden_dim, hidden_dim, hidden_dim)
             self.ginlayers.append(GINConv(mlp, aggregator_type=aggregator_type, learn_eps=learn_eps))
             self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
@@ -66,7 +68,7 @@ class GIN(nn.Module):
         self.graph_level_output = graph_level_output
         # linear functions for graph poolings of output of each layer
         self.linear_prediction = nn.ModuleList()
-        for layer in range(num_layers):
+        for _ in range(num_layers):
             self.linear_prediction.append(
                 nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
                 nn.Linear(hidden_dim, output_dim+graph_level_output))
@@ -88,34 +90,39 @@ class GIN(nn.Module):
         ):
         assert reward_exp is None
 
-        h = self.inp_embedding(state)
-        h = self.inp_transform(h)
-
+        # TODO: Optimize flow of c
         if c is None:
             # TODO: Investigate ways to allow unconditioned forward pass. 
             assert self.condition_dim == 0, "Conditioning signal is not provided."
 
         else:
-            assert len(c) == self.condition_dim, "Dimension error in conditioning signal."
-            match self.modulation_type:
-                case "concat":
-                    C = c.unsqueeze(0).expand(g.num_nodes(), -1)    # expand to match the number of nodes
-                    h = torch.cat([h, C], dim=1)
-            
-                case "film":
-                    gamma, beta = self.film(c).view(2, self.hidden_dim)
-                    h = gamma*h + beta
+            assert c.ndimension() == 1, "Conditioning signal should be 1D."
+            assert c.size(0) == self.condition_dim, "Dimension error in conditioning signal."
 
-                case "attend":
-                    raise NotImplementedError
+        h = self.inp_embedding(state)
+        h = self.inp_transform(h)
+
+        if c is not None and self.modulation_type == "concat":
+            C = c.unsqueeze(0).expand(g.num_nodes(), -1)    # expand to match the number of nodes
+            h = torch.cat([h, C], dim=1)
 
         # list of hidden representations at each layer
         hidden_rep = [h]
         for i, layer in enumerate(self.ginlayers):
+            if c is not None:
+                match self.modulation_type:                      
+                    case "film":
+                        gamma, beta = self.films[i](c).view(2, self.hidden_dim)
+                        h = gamma*h + beta
+
+                    case "attend":
+                        raise NotImplementedError
+
             h = layer(g, h)
             h = self.batch_norms[i](h)
             h = F.relu(h)
             hidden_rep.append(h)
+
         score_over_layer = self.readout(torch.cat(hidden_rep, dim=-1))
 
         if self.graph_level_output > 0:
@@ -123,3 +130,22 @@ class GIN(nn.Module):
                    self.pool(g, score_over_layer[..., self.output_dim:])
         else:
             return score_over_layer
+
+
+if __name__ == '__main__':
+    import networkx as nx
+    
+    g = dgl.DGLGraph()
+    g.add_nodes(4)
+    g.add_edges([0, 1, 2, 3], [1, 2, 3, 0])
+
+    n = g.to_networkx()
+    nx.draw(n, with_labels=True)
+
+    gin = GIN(3, g.num_nodes(), hidden_dim=8)
+    cin = GIN(3, g.num_nodes(), hidden_dim=8, condition_dim=3, modulation_type="film")
+
+    s = torch.full((g.num_nodes(),), 2, dtype=torch.long)
+    c = torch.tensor([1, 2, 3], dtype=torch.float32)
+
+    h = cin(g, s, c)
