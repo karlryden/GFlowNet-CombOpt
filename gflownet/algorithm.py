@@ -19,7 +19,7 @@ def sample_from_logits(pf_logits, gb, state, done, rand_prob=0.):
     # use -1 to denote impossible action (e.g. for done graphs)
     action = torch.full([gb.batch_size,], -1, dtype=torch.long, device=gb.device)
     pf_undone = pf_logits[~done].softmax(dim=1)
-    action[~done] = torch.multinomial(pf_undone, num_samples=1).squeeze(-1)
+    action[~done] = torch.multinomial(pf_undone, num_samples=1).squeeze(-1) # 1 state chosen per graph
 
     if rand_prob > 0.:
         unif_pf_undone = torch.isfinite(pf_logits[~done]).float()
@@ -54,7 +54,7 @@ class DetailedBalance(object):
     @torch.no_grad()
     def sample(self, gb, state, done, rand_prob=0., temperature=1., reward_exp=None):
         self.model.eval()
-        pf_logits = self.model(gb, state, reward_exp)[..., 0]
+        pf_logits = self.model(gb, state, reward_exp)[..., 0]   # [..., 0] selects the logits in case of graph level output
         return sample_from_logits(pf_logits / temperature, gb, state, done, rand_prob=rand_prob)
 
     def save(self, path):

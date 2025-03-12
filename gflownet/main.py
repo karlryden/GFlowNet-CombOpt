@@ -91,7 +91,7 @@ def refine_cfg(cfg):
     return cfg
 
 @torch.no_grad()
-def rollout(gbatch, cfg, alg):
+def rollout(gbatch, cfg, alg, pruner=None):
     env = get_mdp_class(cfg.task)(gbatch, cfg)
     state = env.state
 
@@ -106,6 +106,7 @@ def rollout(gbatch, cfg, alg):
         traj_a.append(action)
         traj_d.append(env.done)
         state = env.step(action)
+        state = env.prune(pruner)   # NOTE: Should action be passed? 
 
     ##### save last state
     traj_s.append(state)
@@ -255,6 +256,57 @@ def main(cfg: DictConfig):
     evaluate(cfg.epochs, train_step, train_data_used, logr_scaler)
     alg.save(alg_save_path)
 
+def test():
+    import networkx as nx
+    from network import GIN
+
+    from dgl.nn.pytorch.conv import GINConv
+
+    g = dgl.DGLGraph()
+    g.add_nodes(4)
+    g.add_edges([0, 1, 2, 3], [1, 2, 3, 0])
+
+    n = g.to_networkx()
+    nx.draw(n, with_labels=True)
+
+    task = "mis"
+    one_hot = {
+        "mis": [1, 0, 0, 0],
+        "mc": [0, 1, 0, 0],
+        "mcut": [0, 0, 1, 0],
+        "mds": [0, 0, 0, 1],
+    }
+
+    # TODO: Investigate how to allow the pruner to operate on just a 2-step neighboorhood
+    pruner = GIN(
+        3, 
+        g.num_nodes(), 
+        hidden_dim=8, 
+        condition_dim=4, 
+        modulation_type="concat"
+    )
+
+    # gin = GIN(3, g.num_nodes(), hidden_dim=8)
+    policy = GIN(
+        3, 
+        g.num_nodes(), 
+        hidden_dim=8, 
+        condition_dim=4, 
+        modulation_type="film"
+    )
+
+    s = torch.full((g.num_nodes(),), 2, dtype=torch.long)   # initial state
+    c = torch.tensor(one_hot[task], dtype=torch.float32)    # condition signal
+
+    h = policy(g, s, c)
+    a = ...
+    s_pred = pruner(g, s, torch.cat([a, c]))
+    s = env.step(a)
+
+    l = loss(s_pred, s)
+
 
 if __name__ == "__main__":
     main()
+
+    # test()

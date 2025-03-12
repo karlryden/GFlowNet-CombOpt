@@ -45,6 +45,9 @@ annend: 40000
 rexp: 5e2 # reward_exp
 rexpit: 1
 
+# TODO: Conditioning
+modulate: false
+condition_dim: 0
 
 hydra:
   run:
