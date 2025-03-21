@@ -91,18 +91,17 @@ def refine_cfg(cfg):
     return cfg
 
 @torch.no_grad()
-def rollout(gbatch, cfg, alg, pruner=None):
+def rollout(gbatch, cfg, alg, c=None, pruner=None, energy_fn=None):
     env = get_mdp_class(cfg.task)(gbatch, cfg)
     state = env.state
 
     ##### sample traj
-    reward_exp_eval = None
     traj_s, traj_r, traj_a, traj_d = [], [], [], []
     while not all(env.done):
-        action = alg.sample(gbatch, state, env.done, rand_prob=cfg.randp, reward_exp=reward_exp_eval)
+        action = alg.sample(gbatch, state, env.done, c, rand_prob=cfg.randp, reward_exp=None)
 
         traj_s.append(state)
-        traj_r.append(env.get_log_reward())
+        traj_r.append(env.get_log_reward(energy_fn=energy_fn))
         traj_a.append(action)
         traj_d.append(env.done)
         state = env.step(action)
@@ -110,7 +109,7 @@ def rollout(gbatch, cfg, alg, pruner=None):
 
     ##### save last state
     traj_s.append(state)
-    traj_r.append(env.get_log_reward())
+    traj_r.append(env.get_log_reward(energy_fn=energy_fn))
     traj_d.append(env.done)
     assert len(traj_s) == len(traj_a) + 1 == len(traj_r) == len(traj_d)
 
