@@ -36,21 +36,22 @@ class GIN(nn.Module):
         self.condition_dim = condition_dim
 
         # TODO: Factor out modulation to be composed with the GIN from outside?
-        assert modulation_type in ["concat", "attend", "film"]
-        match modulation_type:
-            case "concat":
-                hidden_dim += condition_dim
+        if modulation_type == "concat":
+            hidden_dim += condition_dim
 
-            case "film":
-                # TODO: Investigate having a film layer for each layer of the GIN
-                self.films = nn.ModuleList()
-                for _ in range(num_layers - 1):
-                    self.films.append(nn.Linear(condition_dim, 2*hidden_dim))
+        elif modulation_type == "film":
+            # TODO: Investigate having a film layer for each layer of the GIN
+            self.films = nn.ModuleList()
+            for _ in range(num_layers - 1):
+                self.films.append(nn.Linear(condition_dim, 2*hidden_dim))
 
-            case "attend":
-                raise NotImplementedError
-                # TODO: Keys and values need to be of the same dimension. Reduce c? 
-                self.attention = nn.MultiheadAttention(hidden_dim, 1)
+        elif modulation_type == "attend":
+            raise NotImplementedError
+            # TODO: Keys and values need to be of the same dimension. Reduce c? 
+            self.attention = nn.MultiheadAttention(hidden_dim, 1)
+
+        else:
+            raise ValueError("Invalid modulation type.")
 
         self.modulation_type = modulation_type
 
@@ -85,7 +86,7 @@ class GIN(nn.Module):
             self, 
             g: dgl.DGLGraph, 
             state: torch.Tensor, 
-            c: torch.Tensor=None, 
+            c: torch.Tensor=None,   # pass rows of c's in case of graph batch
             reward_exp=None
         ):
         assert reward_exp is None
@@ -96,27 +97,39 @@ class GIN(nn.Module):
             assert self.condition_dim == 0, "Conditioning signal is not provided."
 
         else:
-            assert c.ndimension() == 1, "Conditioning signal should be 1D."
-            assert c.size(0) == self.condition_dim, "Dimension error in conditioning signal."
+            if c.ndimension() == 1: # global (1D) conditioning (one graph)
+                C = c.unsqueeze(0).expand(g.num_nodes(), -1)
+
+            elif c.ndimension() == 2:   # per-graph (2D) conditioning (batch of graphs)
+                C = torch.repeat_interleave(
+                    c, g.batch_num_nodes(), dim=0
+                )
+            else:
+                raise ValueError("Conditioning signal must be either 1D or 2D.")
 
         h = self.inp_embedding(state)
         h = self.inp_transform(h)
 
         if c is not None and self.modulation_type == "concat":
-            C = c.unsqueeze(0).expand(g.num_nodes(), -1)    # expand to match the number of nodes
             h = torch.cat([h, C], dim=1)
 
         # list of hidden representations at each layer
         hidden_rep = [h]
         for i, layer in enumerate(self.ginlayers):
             if c is not None:
-                match self.modulation_type:                      
-                    case "film":
-                        gamma, beta = self.films[i](c).view(2, self.hidden_dim)
-                        h = gamma*h + beta
+                if self.modulation_type == "film":                      
+                    film = self.films[i](C)
+                    gamma, beta = film.chunk(2, dim=1)
+                    h = gamma * h + beta
 
-                    case "attend":
-                        raise NotImplementedError
+                elif self.modulation_type == "attend":
+                    
+                    # TODO: Project c and h to a common dimension,
+                    # then call nn.MultiHeadAttention with h as Q, C as K and V.
+                    
+                    # return h + attention(Q, K, V)? 
+
+                    raise NotImplementedError
 
             h = layer(g, h)
             h = self.batch_norms[i](h)
