@@ -1,11 +1,7 @@
-import random
-import networkx as nx
-import copy
 import numpy as np
 import torch
 import torch.nn.functional as F
 import dgl
-from einops import rearrange, reduce, repeat
 
 from util import get_decided, pad_batch, get_parent
 from network import GIN
@@ -52,9 +48,9 @@ class DetailedBalance(object):
         return list(self.model.parameters()) + list(self.model_flow.parameters())
 
     @torch.no_grad()
-    def sample(self, gb, state, done, rand_prob=0., temperature=1., reward_exp=None):
+    def sample(self, gb, state, done, cb=None, rand_prob=0., temperature=1., reward_exp=None):
         self.model.eval()
-        pf_logits = self.model(gb, state, reward_exp)[..., 0]   # [..., 0] selects the logits in case of graph level output
+        pf_logits = self.model(gb, state, reward_exp, c=cb)[..., 0]   # [..., 0] selects the logits in case of graph level output
         return sample_from_logits(pf_logits / temperature, gb, state, done, rand_prob=rand_prob)
 
     def save(self, path):
