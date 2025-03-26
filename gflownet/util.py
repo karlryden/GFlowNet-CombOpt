@@ -96,16 +96,9 @@ class GraphCombOptMDP(object):
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 1
 
+        state = self._prune(state)
+
         self.set_state(state)
-
-        return state
-
-    def prune(self, pruner=None):
-        state = self.state.clone()
-
-        state = self._prune(state) if pruner is None else pruner(state)
-
-        self.set_state(state)   # TODO: Make optional if pruner.training
 
         return state
 
@@ -114,20 +107,16 @@ class GraphCombOptMDP(object):
 
         raise NotImplementedError
 
-    def get_log_reward(self, state=None, energy_fn=None):
+    def get_log_reward(self, state=None, penalty=0):
         if state is None:
             state = self.state.clone()
 
         padded_state = pad_batch(state, self.numnode_per_graph, padding_value=2)
 
-        if energy_fn is not None:
-            return torch.stack([-energy_fn(row) for row in padded_state], dim=0)
+        return -self.energy_fn(padded_state) + penalty
         
-        else:
-            return self._log_reward(padded_state)
-
-    def _log_reward(self, state):
-        # Problem specific log-reward calculated as in the appendix
+    def energy_fn(self, state):
+        # Problem-specific energy function implemented as in the appendix
 
         raise NotImplementedError
 
@@ -137,18 +126,6 @@ class GraphCombOptMDP(object):
     def get_decided_mask(self, state=None):
         state = self.state if state is None else state
         return get_decided(state, self.task)
-
-    # Inclusion constraint
-    def includes(self, u):
-        return self.state[u] == 1
-
-    # Exclusion constraint
-    def excludes(self, u):
-        return self.state[u] == 0
-
-    # Budget constraint
-    def affords(self, n):
-        return (self.state == 1).sum().item() <= n
 
 def get_mdp_class(task):
     if task == "MaxIndependentSet":
@@ -180,8 +157,8 @@ class MaxIndSetMDP(GraphCombOptMDP):
         
         return state
 
-    def _log_reward(self, state):
-        return (state == 1).sum(dim=1).float()
+    def energy_fn(self, state):
+        return -(state == 1).sum(dim=1).float()
 
 class MaxCliqueMDP(GraphCombOptMDP):
     # initial state: all nodes = "2" (all nodes are undecided)
@@ -204,8 +181,8 @@ class MaxCliqueMDP(GraphCombOptMDP):
 
         return state
 
-    def _log_reward(self, state):
-        return (state == 1).sum(dim=1).float()
+    def energy_fn(self, state):
+        return -(state == 1).sum(dim=1).float()
 
 # TODO: Reformulate this CO to select ones instead of zeros, so that self.step can be moved up to GraphCombOptMDP
 class MinDominateSetMDP(GraphCombOptMDP):
@@ -224,6 +201,8 @@ class MinDominateSetMDP(GraphCombOptMDP):
         # assert torch.all(state[action_node_idx] == 2)
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 0
+        
+        state = self._prune(state)
         
         self.set_state(state)
 
@@ -251,8 +230,8 @@ class MinDominateSetMDP(GraphCombOptMDP):
 
         return state
 
-    def _log_reward(self, state):
-        return - (state == 1).sum(dim=1).float()
+    def energy_fn(self, state):
+        return (state == 1).sum(dim=1).float()
 
 class MaxCutMDP(GraphCombOptMDP):
     # initial state: all nodes = "2" (all nodes are NOT in the set)
@@ -279,7 +258,7 @@ class MaxCutMDP(GraphCombOptMDP):
 
         return state
 
-    def _log_reward(self, state): # calculate the cut
+    def energy_fn(self, state): # calculate the cut
         state[state == 2] = 0 # "0" for "not in the set"
         with self.gbatch.local_scope():
             self.gbatch.ndata["h"] = state.float()
@@ -288,7 +267,7 @@ class MaxCutMDP(GraphCombOptMDP):
             self.gbatch.edata["e"] = (self.gbatch.edata["e"] == 1).float()
             cut = dgl.sum_edges(self.gbatch, 'e') # (bs, )
         cut = cut / 2 # each edge is counted twice
-        return cut
+        return -cut
 
 ######### Replay Buffer Utils
 
