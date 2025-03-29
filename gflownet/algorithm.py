@@ -33,8 +33,8 @@ class DetailedBalance(object):
 
         assert cfg.arch in ["gin"]
         gin_dict = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.hidden_layer,
-                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps,
-                    "aggregator_type": cfg.aggr}
+                    "condition_dim": cfg.condition_dim, "modulation_type": cfg.modulation, 
+                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps, "aggregator_type": cfg.aggr}
         self.model = GIN(3, 1, graph_level_output=0, **gin_dict).to(device)
         self.model_flow = GIN(3, 0, graph_level_output=1, **gin_dict).to(device)
         self.params = [
@@ -50,7 +50,7 @@ class DetailedBalance(object):
     @torch.no_grad()
     def sample(self, gb, state, done, cb=None, rand_prob=0., temperature=1., reward_exp=None):
         self.model.eval()
-        pf_logits = self.model(gb, state, reward_exp, c=cb)[..., 0]   # [..., 0] selects the logits in case of graph level output
+        pf_logits = self.model(gb, state, c=cb, reward_exp=reward_exp)[..., 0]   # [..., 0] selects the logits in case of graph level output
         return sample_from_logits(pf_logits / temperature, gb, state, done, rand_prob=rand_prob)
 
     def save(self, path):
@@ -79,7 +79,7 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         self.forward_looking = (cfg.alg == "fl")
         super(DetailedBalanceTransitionBuffer, self).__init__(cfg, device)
 
-    def train_step(self, *batch, reward_exp=None, logr_scaler=None):
+    def train_step(self, *batch, cbatch=None, reward_exp=None, logr_scaler=None):
         self.model.train()
         self.model_flow.train()
         torch.cuda.empty_cache()
@@ -94,8 +94,10 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
-        logits = self.model(gb_two, s_two, reward_exp)
-        _, flows_out = self.model_flow(gb_two, s_two, reward_exp) # (2 * num_graphs, 1)
+        cbatch_two = None if cbatch is None else cbatch.repeat(gb_two.batch_size // cbatch.shape[0], 1)
+
+        logits = self.model(gb_two, s_two, c=cbatch_two, reward_exp=reward_exp)
+        _, flows_out = self.model_flow(gb_two, s_two, c=cbatch_two, reward_exp=reward_exp) # (2 * num_graphs, 1)
         flows, flows_next = flows_out[:batch_size, 0], flows_out[batch_size:, 0]
 
         pf_logits = logits[:total_num_nodes, ..., 0]

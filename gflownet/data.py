@@ -25,25 +25,34 @@ class GraphDataset(Dataset):
         assert data_dir is not None
         self.data_dir = data_dir
         self.graph_paths = sorted(list(self.data_dir.rglob("*.graph")))
+        self.constraint_paths = sorted(list(self.data_dir.rglob("*.pickle")))
+        if self.constraint_paths:
+            assert len(self.graph_paths) == len(self.constraint_paths)
+
         if size is not None:
             assert size > 0
             self.graph_paths = self.graph_paths[:size]
         self.num_graphs = len(self.graph_paths)
 
     def __getitem__(self, idx):
-        return read_dgl_from_graph(self.graph_paths[idx])
+        g = read_dgl_from_graph(self.graph_paths[idx])
+        
+        if self.constraint_paths:
+            with open(self.constraint_paths[idx], 'rb') as constraint_path:
+                constraint = pickle.load(constraint_path)
+                c = constraint['constraint']
+                s = constraint['signature']
+            
+            return g, {'constraint': c, 'signature': s}
+
+        else:
+            return g, None
 
     def __len__(self):
         return self.num_graphs
 
 def _prepare_instances(instance_directory: pathlib.Path, cache_directory: pathlib.Path, **kwargs):
     cache_directory.mkdir(parents=True, exist_ok=True)
-    # # glob only searches the first level
-    # # for graph_path in instance_directory.rglob("*.gpickle"):
-    # for graph_path in tqdm(instance_directory.glob("*.gpickle")):
-    #     # pathlib resolve: absolute path
-    #     _prepare_instance(graph_path.resolve(), cache_directory, **kwargs)
-
     resolved_graph_paths = [graph_path.resolve() for graph_path in instance_directory.glob("*.pickle")]
     prepare_instance = functools.partial(
         _prepare_instance,
@@ -69,26 +78,52 @@ def imap_unordered_bar(func, args, n_processes=2):
 
 def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathlib.Path):
     cache_directory.mkdir(parents=True, exist_ok=True)
-    dest_path = cache_directory / (source_instance_path.stem + ".graph")
-    if os.path.exists(dest_path):
+    dest_stem = cache_directory / source_instance_path.stem
+
+    if os.path.exists(dest_stem.with_suffix(".graph")):
         source_mtime = os.path.getmtime(source_instance_path)
-        last_updated = os.path.getmtime(dest_path)
+        last_updated = os.path.getmtime(dest_stem.with_suffix(".graph"))
+
         if source_mtime <= last_updated:
             return  # we already have an up2date version of that file as matrix
 
     try:
         with open(source_instance_path, 'rb') as source_instance_file:
-            g = pickle.load(source_instance_file)
+            x = pickle.load(source_instance_file)
+            g = x['graph']
+
+            if 'constraint' in x.keys():
+                c = x['constraint']
+                s = x['signature']
+
+            else:
+                c = None
+                s = None
     except:
         print(f"Failed to read {source_instance_path}.")
         return
+
     g.remove_edges_from(nx.selfloop_edges(g)) # remove self loops
-    with open(dest_path, 'wb') as dest_file:
-        pickle.dump(g, dest_file, pickle.HIGHEST_PROTOCOL)
+
+    with open(dest_stem.with_suffix(".graph"), 'wb') as graph_file:
+        pickle.dump(g, graph_file, pickle.HIGHEST_PROTOCOL)
     print(f"Updated graph file: {source_instance_path}.")
 
-def collate_fn(graphs):
-    return dgl.batch(graphs)
+    if c is not None:
+        with open(dest_stem.with_suffix(".pickle"), 'wb') as constraint_file:
+            pickle.dump({"constraint": c, "signature": s}, constraint_file, pickle.HIGHEST_PROTOCOL)
+
+def collate_fn(samples):
+    graphs = [x[0] for x in samples]
+    gbatch = dgl.batch(graphs)
+
+    if samples[0][1] is not None:
+        consts = [x[1] for x in samples]
+
+    else:
+        consts = []
+
+    return gbatch, consts
 
 def get_data_loaders(cfg):
     data_path = Path(__file__).parent.parent / "data"

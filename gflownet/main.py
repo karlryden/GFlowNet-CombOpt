@@ -43,6 +43,57 @@ def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
         return logr * reward_exp
     return logr_scaler
 
+# TODO: Move these 3 to util? 
+# NOTE: I am worried about the tensors ending up on a different device to state.
+def get_indicator_fn(signature):
+    constraint_type = signature['type']
+    constrained_node = signature['node']
+
+    if constraint_type == 'none':
+        return lambda s: torch.tensor([1.0])
+    
+    elif constraint_type == 'inclusion':
+        return lambda s: (s[constrained_node] == 1).float()
+    
+    elif constraint_type == 'exclusion':
+        return lambda s: (s[constrained_node] == 0).float()
+
+def batch_indicators(gbatch, ibatch):
+    cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
+
+    def indicator_fn(state):
+        sat = torch.empty(gbatch.batch_size, device=gbatch.device)
+
+        for k, indicator in enumerate(ibatch):
+            start = 0 if k == 0 else cum_num_node[k-1]
+            end = cum_num_node[k]
+
+            sat[k] = indicator(state[start:end])
+
+        return sat
+    
+    return indicator_fn
+
+def get_penalty_fn(cfg, gbatch, critic):
+    def linear_penalty(state):
+        penalty_weight, = cfg.pargs
+        return penalty_weight * gbatch.batch_num_nodes() * critic(state)
+
+    if cfg.penalty == "none":
+        return lambda state: torch.tensor(0., device=gbatch.device)
+    
+    elif cfg.penalty == "linear":
+        return linear_penalty
+
+    else:
+        raise NotImplementedError
+
+# TODO: Implement
+def get_last_layer(pbatch, llm):
+    # tokenize pbatch and pass through llm
+
+    ...
+
 def refine_cfg(cfg):
     with open_dict(cfg):
         cfg.device = cfg.d
@@ -71,6 +122,8 @@ def refine_cfg(cfg):
         cfg.reward_exp_init = cfg.rexpit
         if cfg.anneal in ["lin"]:
             cfg.anneal = "linear"
+        if cfg.penalty in ["lin"]:
+            cfg.penalty = "linear"
 
         # training
         cfg.batch_size = cfg.bs
@@ -91,25 +144,44 @@ def refine_cfg(cfg):
     return cfg
 
 @torch.no_grad()
-def rollout(gbatch, cfg, alg, c=None, pruner=None, energy_fn=None):
+def rollout(
+    gbatch: dgl.DGLGraph, 
+    cfg, alg, reward_exp=None, 
+    cbatch: torch.Tensor=None, 
+    penalty_fn=None,
+):
+    if cbatch is not None:
+        if cbatch.ndimension() == 1:
+            assert gbatch.batch_size == 1
+
+        elif cbatch.ndimension() == 2:
+            assert len(cbatch) == gbatch.batch_size
+
+        else:
+            raise ValueError
+
+    if penalty_fn is None:
+        p = 0
+
     env = get_mdp_class(cfg.task)(gbatch, cfg)
     state = env.state
 
     ##### sample traj
     traj_s, traj_r, traj_a, traj_d = [], [], [], []
     while not all(env.done):
-        action = alg.sample(gbatch, state, env.done, c, rand_prob=cfg.randp, reward_exp=None)
+        action = alg.sample(gbatch, state, env.done, cb=cbatch, rand_prob=cfg.randp, reward_exp=None)
+        if penalty_fn is not None:
+            p = penalty_fn(state)
 
         traj_s.append(state)
-        traj_r.append(env.get_log_reward(energy_fn=energy_fn))
+        traj_r.append(env.get_log_reward(penalty=p))
         traj_a.append(action)
         traj_d.append(env.done)
         state = env.step(action)
-        state = env.prune(pruner)   # NOTE: Should action be passed? 
 
     ##### save last state
     traj_s.append(state)
-    traj_r.append(env.get_log_reward(energy_fn=energy_fn))
+    traj_r.append(env.get_log_reward(penalty=(p if penalty_fn is None else penalty_fn(state))))
     traj_d.append(env.done)
     assert len(traj_s) == len(traj_a) + 1 == len(traj_r) == len(traj_d)
 
@@ -143,6 +215,7 @@ def main(cfg: DictConfig):
     device = torch.device(f"cuda:{cfg.device:d}" if torch.cuda.is_available() and cfg.device>=0 else "cpu")
     print(f"Device: {device}")
     alg, buffer = get_alg_buffer(cfg, device)
+    llm = ...
     seed_torch(cfg.seed)
     print(str(cfg))
     print(f"Work directory: {os.getcwd()}")
@@ -197,7 +270,18 @@ def main(cfg: DictConfig):
         pickle.dump(result, gzip.open("./result.json", 'wb'))
 
     for ep in range(cfg.epochs):
-        for batch_idx, gbatch in enumerate(train_loader):
+        for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
+            # cbatch = llm([const["constraint"] for const in constbatch])   # TODO: Call LLaMA
+            if constbatch:
+                cbatch = torch.rand((len(constbatch), cfg.condition_dim))
+                ibatch = [get_indicator_fn(const["signature"]) for const in constbatch]
+                indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
+            else:
+                cbatch = None
+                indicator = None
+
+            penalty_fn = None if indicator is None else get_penalty_fn(cfg, gbatch, indicator)
+
             reward_exp = None
             process_ratio = max(0., min(1., train_data_used / cfg.annend))
             logr_scaler = get_logr_scaler(cfg, process_ratio=process_ratio, reward_exp=reward_exp)
@@ -209,8 +293,15 @@ def main(cfg: DictConfig):
                 gbatch = dgl.batch([gbatch] * cfg.batch_size_interact)
             train_data_used += gbatch.batch_size
 
+            # indicator = lambda s: critic(gbatch, s, cbatch) # NOTE: When critic network is implemented
+
             ###### rollout
-            batch, metric_ls = rollout(gbatch, cfg, alg)
+            batch, metric_ls = rollout(
+                gbatch, 
+                cfg, alg, 
+                cbatch=cbatch, 
+                penalty_fn=penalty_fn)
+
             buffer.add_batch(batch)
 
             logr = logr_scaler(batch[-2][:, -1])
@@ -227,7 +318,7 @@ def main(cfg: DictConfig):
                     break
                 curr_indices = random.sample(indices, min(len(indices), batch_size))
                 batch = buffer.sample_from_indices(curr_indices)
-                train_info = alg.train_step(*batch, reward_exp=reward_exp, logr_scaler=logr_scaler)
+                train_info = alg.train_step(*batch, cbatch=cbatch, reward_exp=reward_exp, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
                 indices = [i for i in indices if i not in curr_indices]
 
             if cfg.onpolicy:
@@ -276,15 +367,6 @@ def test():
         "mds": [0, 0, 0, 1],
     }
 
-    # TODO: Investigate how to allow the pruner to operate on just a 2-step neighboorhood
-    pruner = GIN(
-        3, 
-        g.num_nodes(), 
-        hidden_dim=8, 
-        condition_dim=4, 
-        modulation_type="concat"
-    )
-
     # gin = GIN(3, g.num_nodes(), hidden_dim=8)
     policy = GIN(
         3, 
@@ -293,17 +375,6 @@ def test():
         condition_dim=4, 
         modulation_type="film"
     )
-
-    s = torch.full((g.num_nodes(),), 2, dtype=torch.long)   # initial state
-    c = torch.tensor(one_hot[task], dtype=torch.float32)    # condition signal
-
-    h = policy(g, s, c)
-    a = ...
-    s_pred = pruner(g, s, torch.cat([a, c]))
-    s = env.step(a)
-
-    l = loss(s_pred, s)
-
 
 if __name__ == "__main__":
     main()
