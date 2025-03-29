@@ -53,12 +53,6 @@ def generate_instance(n, k, r, p):
     instance = CSP_Instance(language=is_language,n_variables=v, clauses=clauses)
     return instance
 
-
-# def find_max_list(list):
-#     list_len = [len(i) for i in list]
-#     print(max(list_len))
-
-
 class Constraint_Language:
     """ Class to represent a fixed Constraint Language """
 

@@ -25,6 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--graph_type', type=str, default='small')
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument("--save_dir", type=str, default="data")
+    parser.add_argument("--constrain", action="store_true")
     args = parser.parse_args()
     np.random.seed(seed=args.seed)
 
@@ -48,9 +49,26 @@ if __name__ == '__main__':
             g.remove_nodes_from(list(nx.isolates(g)))
             if min_n <= g.number_of_nodes() <= max_n:
                 break
+
+        x = {
+            'graph': g,
+        }
+
+        if args.constrain:  # NOTE: Should unconstrained examples also be generated? 
+            # TODO: Implement and train a 'critic' to skip indicators
+            constraint_type = random.choice(['inclusion', 'exclusion'])
+            constrained_node = random.choice(list(g.nodes()))
+            constraint = ... # TODO: Call LLM-API(type, node; g) here
+
+            x['constraint'] = constraint
+            x['signature'] = {
+                'type': constraint_type,
+                'node': constrained_node
+            }
+
         output_file = path / (f'{stub}.pickle')
 
         with open(output_file, 'wb') as f:
-            pickle.dump(g, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(x, f, pickle.HIGHEST_PROTOCOL)
         print(f"Generated graph {path}")
 
