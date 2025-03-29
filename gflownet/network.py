@@ -4,13 +4,16 @@ import torch.nn.functional as F
 from einops import rearrange, reduce, repeat
 import dgl
 import dgl.function as fn
-from dgl.nn.pytorch.conv import GINConv, GATConv
+from dgl.nn.pytorch.conv import GINConv, GATConv, GraphConv
 from dgl.nn.pytorch.glob import MaxPooling
 
 """
 GIN architecture
 from https://github.com/dmlc/dgl/blob/master/examples/pytorch/gin/train.py
 """
+
+# TODO: Restructure nets into a hierarchy:
+# GNN -> ConditionalGNN
 
 class MLP_GIN(nn.Module):
     """Construct two-layer MLP-type aggreator for GIN model"""
@@ -36,7 +39,10 @@ class GIN(nn.Module):
         self.condition_dim = condition_dim
 
         # TODO: Factor out modulation to be composed with the GIN from outside?
-        if modulation_type == "concat":
+        if modulation_type == "none":
+            ...
+
+        elif modulation_type == "concat":
             hidden_dim += condition_dim
 
         elif modulation_type == "film":
