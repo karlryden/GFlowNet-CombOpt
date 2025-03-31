@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import dgl
 
@@ -43,6 +44,8 @@ class DetailedBalance(object):
         ]
         self.optimizer = torch.optim.Adam(self.params)
         self.leaf_coef = cfg.leaf_coef
+        if cfg.llm != 'none':
+            self.proj = nn.Linear(cfg.llm_dim, cfg.condition_dim)
 
     def parameters(self):
         return list(self.model.parameters()) + list(self.model_flow.parameters())
@@ -94,6 +97,10 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
+        if cbatch is not None:
+            if self.cfg.llm != 'none':
+                cbatch = self.proj(cbatch)
+
         cbatch_two = None if cbatch is None else cbatch.repeat(gb_two.batch_size // cbatch.shape[0], 1)
 
         logits = self.model(gb_two, s_two, c=cbatch_two, reward_exp=reward_exp)

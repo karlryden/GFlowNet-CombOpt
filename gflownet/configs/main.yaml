@@ -47,9 +47,13 @@ rexpit: 1
 penalty: linear
 pargs: [0.75]
 
-# TODO: Conditioning
+# Conditioning
 modulation: concat
-condition_dim: 0
+condition_dim: 256
+
+# LLM
+llm: meta-llama/Llama-3.2-1B-Instruct
+llm_dim: 2048 # check hidden dimension of your LLaMA model
 
 hydra:
   run:
