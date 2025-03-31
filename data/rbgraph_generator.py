@@ -41,7 +41,7 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
-    for num_g in tqdm(range(args.num_graph)):
+    for i, num_g in enumerate(tqdm(range(args.num_graph))):
         path = Path(f'{args.save_dir}')
         stub = f"GR_{min_n}_{max_n}_{num_g}"
         while True:
@@ -58,7 +58,7 @@ if __name__ == '__main__':
             # TODO: Implement and train a 'critic' to skip indicators
             constraint_type = random.choice(['inclusion', 'exclusion'])
             constrained_node = random.choice(list(g.nodes()))
-            constraint = ... # TODO: Call LLM-API(type, node; g) here
+            constraint = f'This is constraint #{i}.' # TODO: Call LLM-API(type, node; g) here
 
             x['constraint'] = constraint
             x['signature'] = {
