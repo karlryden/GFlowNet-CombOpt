@@ -3,7 +3,6 @@ import gzip, pickle
 from time import time, sleep
 from tqdm import tqdm
 import hydra
-from omegaconf import DictConfig, open_dict
 
 import random
 import numpy as np
@@ -12,64 +11,16 @@ import dgl
 from einops import rearrange
 
 from data import get_data_loaders
-from util import seed_torch, get_mdp_class, get_logr_scaler
+from util import refine_cfg, seed_torch, get_logr_scaler
+from combopt import get_mdp_class
 from algorithm import get_alg_buffer
 from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
 
 torch.backends.cudnn.benchmark = True
 
-def refine_cfg(cfg):
-    with open_dict(cfg):
-        cfg.device = cfg.d
-        cfg.work_directory = os.getcwd()
-
-        if cfg.task in ["mis", "maxindset", "maxindependentset",]:
-            cfg.task = "MaxIndependentSet"
-            cfg.wandb_project_name = "MIS"
-        elif cfg.task in ["mds", "mindomset", "mindominateset",]:
-            cfg.task = "MinDominateSet"
-            cfg.wandb_project_name = "MDS"
-        elif cfg.task in ["mc", "maxclique",]:
-            cfg.task = "MaxClique"
-            cfg.wandb_project_name = "MaxClique"
-        elif cfg.task in ["mcut", "maxcut",]:
-            cfg.task = "MaxCut"
-            cfg.wandb_project_name = "MaxCut"
-        else:
-            raise NotImplementedError
-
-        # architecture
-        assert cfg.arch in ["gin"]
-
-        # log reward shape
-        cfg.reward_exp = cfg.rexp
-        cfg.reward_exp_init = cfg.rexpit
-        if cfg.anneal in ["lin"]:
-            cfg.anneal = "linear"
-        if cfg.penalty in ["lin"]:
-            cfg.penalty = "linear"
-
-        # training
-        cfg.batch_size = cfg.bs
-        cfg.batch_size_interact = cfg.bsit
-        cfg.leaf_coef = cfg.lc
-        cfg.same_graph_across_batch = cfg.sameg
-
-        # data
-        cfg.test_batch_size = cfg.tbs
-        if "rb" in cfg.input:
-            cfg.data_type = cfg.input.upper()
-        elif "ba" in cfg.input:
-            cfg.data_type = cfg.input.upper()
-        else:
-            raise NotImplementedError
-
-    del cfg.d, cfg.rexp, cfg.rexpit, cfg.bs, cfg.bsit, cfg.lc, cfg.sameg, cfg.tbs
-    return cfg
-
 @hydra.main(config_path="configs", config_name="main") # for hydra-core==1.1.0
 # @hydra.main(version_base=None, config_path="configs", config_name="main") # for newer hydra
-def main(cfg: DictConfig):
+def main(cfg):
     cfg = refine_cfg(cfg)
     device = torch.device(f"cuda:{cfg.device:d}" if torch.cuda.is_available() and cfg.device>=0 else "cpu")
     print(f"Device: {device}")

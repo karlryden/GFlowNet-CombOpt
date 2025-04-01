@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl
 
-from util import get_decided, pad_batch, get_parent, get_mdp_class, TransitionBuffer
+from util import TransitionBuffer
+from combopt import get_decided, pad_batch, get_parent, get_mdp_class
 from network import GIN
 from llm import get_tokenizer, get_llm, get_last_hidden_layer
 
