@@ -3,129 +3,20 @@ import gzip, pickle
 from time import time, sleep
 from tqdm import tqdm
 import hydra
-from omegaconf import DictConfig, open_dict, OmegaConf
+from omegaconf import DictConfig, open_dict
 
 import random
 import numpy as np
 import torch
 import dgl
-from einops import rearrange, reduce, repeat
+from einops import rearrange
 
 from data import get_data_loaders
-from util import seed_torch, TransitionBuffer, get_mdp_class
-from algorithm import DetailedBalanceTransitionBuffer
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from util import seed_torch, get_mdp_class, get_logr_scaler
+from algorithm import get_alg_buffer
+from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
 
 torch.backends.cudnn.benchmark = True
-
-
-def get_alg_buffer(cfg, device):
-    assert cfg.alg in ["db", "fl"]
-    buffer = TransitionBuffer(cfg.tranbuff_size, cfg)
-    alg = DetailedBalanceTransitionBuffer(cfg, device)
-    return alg, buffer
-
-def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
-    if reward_exp is None:
-        reward_exp = float(cfg.reward_exp)
-
-    if cfg.anneal == "linear":
-        process_ratio = max(0., min(1., process_ratio)) # from 0 to 1
-        reward_exp = reward_exp * process_ratio +\
-                     float(cfg.reward_exp_init) * (1 - process_ratio)
-    elif cfg.anneal == "none":
-        pass
-    else:
-        raise NotImplementedError
-
-    # (R/T)^beta -> (log R - log T) * beta
-    def logr_scaler(sol_size, gbatch=None):
-        logr = sol_size
-        return logr * reward_exp
-    return logr_scaler
-
-# TODO: Move these 3 to util? 
-# NOTE: I am worried about the tensors ending up on a different device to state.
-def get_indicator_fn(signature):
-    constraint_type = signature['type']
-    constrained_node = signature['node']
-
-    if constraint_type == 'none':
-        return lambda s: torch.tensor([1.0])
-    
-    elif constraint_type == 'inclusion':
-        return lambda s: (s[constrained_node] == 1).float()
-    
-    elif constraint_type == 'exclusion':
-        return lambda s: (s[constrained_node] == 0).float()
-
-def batch_indicators(gbatch, ibatch):
-    cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
-
-    def indicator_fn(state):
-        sat = torch.empty(gbatch.batch_size, device=gbatch.device)
-
-        for k, indicator in enumerate(ibatch):
-            start = 0 if k == 0 else cum_num_node[k-1]
-            end = cum_num_node[k]
-
-            sat[k] = indicator(state[start:end])
-
-        return sat
-    
-    return indicator_fn
-
-def get_penalty_fn(cfg, gbatch, critic):
-    def linear_penalty(state):
-        penalty_weight, = cfg.pargs
-        return penalty_weight * gbatch.batch_num_nodes() * critic(state)
-
-    if cfg.penalty == "none":
-        return lambda state: torch.tensor(0., device=gbatch.device)
-    
-    elif cfg.penalty == "linear":
-        return linear_penalty
-
-    else:
-        raise NotImplementedError
-
-def get_tokenizer(model_name):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-
-    return tokenizer
-
-def get_llm(model_name):
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, 
-        torch_dtype="auto", 
-        low_cpu_mem_usage=True, 
-        device_map="auto"
-    )
-
-    model.eval()
-
-    return model
-
-def get_last_hidden_layer(prompts, tokenizer, model):
-    print(f'prompt: {prompts}')
-
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
-
-    def mean_pool(hidden_states, attention_mask):
-        # hidden_states: [batch_size, seq_len, hidden_dim]
-        # attention_mask: [batch_size, seq_len]
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size())
-        sum_embeddings = (hidden_states * input_mask_expanded).sum(dim=1)
-        sum_mask = input_mask_expanded.sum(dim=1)
-        return sum_embeddings / sum_mask
-
-    with torch.no_grad():
-        outputs = model(**inputs, output_hidden_states=True)
-        last_hidden = outputs.hidden_states[-1]
-
-    return mean_pool(last_hidden, inputs["attention_mask"])
 
 def refine_cfg(cfg):
     with open_dict(cfg):
@@ -176,72 +67,6 @@ def refine_cfg(cfg):
     del cfg.d, cfg.rexp, cfg.rexpit, cfg.bs, cfg.bsit, cfg.lc, cfg.sameg, cfg.tbs
     return cfg
 
-@torch.no_grad()
-def rollout(
-    gbatch: dgl.DGLGraph, 
-    cfg, alg, reward_exp=None, 
-    cbatch: torch.Tensor=None, 
-    penalty_fn=None,
-):
-    if cbatch is not None:
-        cbatch = alg.proj(cbatch)
-        if cbatch.ndimension() == 1:
-            assert gbatch.batch_size == 1
-
-        elif cbatch.ndimension() == 2:
-            assert len(cbatch) == gbatch.batch_size
-
-        else:
-            raise ValueError
-
-    if penalty_fn is None:
-        p = 0
-
-    env = get_mdp_class(cfg.task)(gbatch, cfg)
-    state = env.state
-
-    ##### sample traj
-    traj_s, traj_r, traj_a, traj_d = [], [], [], []
-    while not all(env.done):
-        action = alg.sample(gbatch, state, env.done, cb=cbatch, rand_prob=cfg.randp, reward_exp=None)
-        if penalty_fn is not None:
-            p = penalty_fn(state)
-
-        traj_s.append(state)
-        traj_r.append(env.get_log_reward(penalty=p))
-        traj_a.append(action)
-        traj_d.append(env.done)
-        state = env.step(action)
-
-    ##### save last state
-    traj_s.append(state)
-    traj_r.append(env.get_log_reward(penalty=(p if penalty_fn is None else penalty_fn(state))))
-    traj_d.append(env.done)
-    assert len(traj_s) == len(traj_a) + 1 == len(traj_r) == len(traj_d)
-
-    traj_s = torch.stack(traj_s, dim=1) # (sum of #node per graph in batch, max_traj_len)
-    traj_r = torch.stack(traj_r, dim=1) # (batch_size, max_traj_len)
-    traj_a = torch.stack(traj_a, dim=1) # (batch_size, max_traj_len-1)
-    """
-    traj_a is tensor like 
-    [ 4, 30, 86, 95, 96, 29, -1, -1],
-    [47, 60, 41, 11, 55, 64, 80, -1],
-    [26, 38, 13,  5,  9, -1, -1, -1]
-    """
-    traj_d = torch.stack(traj_d, dim=1) # (batch_size, max_traj_len)
-    """
-    traj_d is tensor like 
-    [False, False, False, False, False, False,  True,  True,  True],
-    [False, False, False, False, False, False, False,  True,  True],
-    [False, False, False, False, False,  True,  True,  True,  True]
-    """
-    traj_len = 1 + torch.sum(~traj_d, dim=1) # (batch_size, )
-
-    ##### graph, state, action, done, reward, trajectory length
-    batch = gbatch.cpu(), traj_s.cpu(), traj_a.cpu(), traj_d.cpu(), traj_r.cpu(), traj_len.cpu()
-    return batch, env.batch_metric(state)
-
-
 @hydra.main(config_path="configs", config_name="main") # for hydra-core==1.1.0
 # @hydra.main(version_base=None, config_path="configs", config_name="main") # for newer hydra
 def main(cfg: DictConfig):
@@ -249,8 +74,6 @@ def main(cfg: DictConfig):
     device = torch.device(f"cuda:{cfg.device:d}" if torch.cuda.is_available() and cfg.device>=0 else "cpu")
     print(f"Device: {device}")
     alg, buffer = get_alg_buffer(cfg, device)
-    tokenizer = None if cfg.llm == 'none' else get_tokenizer(cfg.llm)
-    llm = None if cfg.llm == 'none' else get_llm(cfg.llm)
 
     seed_torch(cfg.seed)
     print(str(cfg))
@@ -276,9 +99,19 @@ def main(cfg: DictConfig):
         logr_ls = []
         pbar = tqdm(enumerate(test_loader))
         pbar.set_description(f"Test Epoch {ep:2d} Data used {train_data_used:5d}")
-        for batch_idx, gbatch in pbar:
+        for batch_idx, (gbatch, constbatch) in pbar:
             gbatch = gbatch.to(device)
-            gbatch_rep = dgl.batch([gbatch] * num_repeat)
+            if constbatch:
+                cbatch = [const["constraint"] for const in constbatch]
+                ibatch = [get_indicator_fn(const["signature"]) for const in constbatch]
+                indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
+            else:
+                cbatch = None
+                indicator = None
+
+            penalty_fn = None if indicator is None else get_penalty_fn(cfg, gbatch, indicator)
+
+            gbatch_rep = dgl.batch([gbatch] * num_repeat)   # TODO: Mirror this for constbatch
 
             env = get_mdp_class(cfg.task)(gbatch_rep, cfg)
             state = env.state
@@ -308,14 +141,7 @@ def main(cfg: DictConfig):
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
             if constbatch:
-                if (tokenizer is not None) and (llm is not None):
-                    cbatch = get_last_hidden_layer(
-                        [const["constraint"] for const in constbatch], tokenizer, llm
-                    )
-                    cbatch = cbatch.to(dtype=torch.float32) # on CPU
-                else:
-                    cbatch = torch.rand((len(constbatch), cfg.condition_dim))
-
+                cbatch = [const["constraint"] for const in constbatch]
                 ibatch = [get_indicator_fn(const["signature"]) for const in constbatch]
                 indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
             else:
@@ -338,7 +164,7 @@ def main(cfg: DictConfig):
             # indicator = lambda s: critic(gbatch, s, cbatch) # NOTE: When critic network is implemented
 
             ###### rollout
-            batch, metric_ls = rollout(
+            batch, metric_ls = alg.rollout(
                 gbatch, 
                 cfg, alg, 
                 cbatch=cbatch, 
@@ -385,40 +211,8 @@ def main(cfg: DictConfig):
                 if cfg.eval:
                     evaluate(ep, train_step, train_data_used, logr_scaler)
 
-    evaluate(cfg.epochs, train_step, train_data_used, logr_scaler)
+    # evaluate(cfg.epochs, train_step, train_data_used, logr_scaler)
     alg.save(alg_save_path)
-
-def test():
-    import networkx as nx
-    from network import GIN
-
-    from dgl.nn.pytorch.conv import GINConv
-
-    g = dgl.DGLGraph()
-    g.add_nodes(4)
-    g.add_edges([0, 1, 2, 3], [1, 2, 3, 0])
-
-    n = g.to_networkx()
-    nx.draw(n, with_labels=True)
-
-    task = "mis"
-    one_hot = {
-        "mis": [1, 0, 0, 0],
-        "mc": [0, 1, 0, 0],
-        "mcut": [0, 0, 1, 0],
-        "mds": [0, 0, 0, 1],
-    }
-
-    # gin = GIN(3, g.num_nodes(), hidden_dim=8)
-    policy = GIN(
-        3, 
-        g.num_nodes(), 
-        hidden_dim=8, 
-        condition_dim=4, 
-        modulation_type="film"
-    )
 
 if __name__ == "__main__":
     main()
-
-    # test()

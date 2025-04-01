@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, reduce, repeat
 import dgl
 import dgl.function as fn
 from dgl.nn.pytorch.conv import GINConv, GATConv, GraphConv
@@ -97,16 +96,16 @@ class GIN(nn.Module):
         ):
         assert reward_exp is None
 
-        # TODO: Optimize flow of c
         if c is None:
-            # TODO: Investigate ways to allow unconditioned forward pass. 
             assert self.condition_dim == 0, "Conditioning signal is not provided."
 
         else:
             if c.ndimension() == 1: # global (1D) conditioning (one graph)
+                assert g.batch_size == 1
                 C = c.unsqueeze(0).expand(g.num_nodes(), -1)
 
             elif c.ndimension() == 2:   # per-graph (2D) conditioning (batch of graphs)
+                assert len(c) == g.batch_size
                 C = torch.repeat_interleave(
                     c, g.batch_num_nodes(), dim=0
                 )

@@ -12,6 +12,24 @@ from torch.nn.utils.rnn import pad_sequence
 import dgl
 import dgl.function as fn
 
+def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
+    if reward_exp is None:
+        reward_exp = float(cfg.reward_exp)
+
+    if cfg.anneal == "linear":
+        process_ratio = max(0., min(1., process_ratio)) # from 0 to 1
+        reward_exp = reward_exp * process_ratio +\
+                     float(cfg.reward_exp_init) * (1 - process_ratio)
+    elif cfg.anneal == "none":
+        pass
+    else:
+        raise NotImplementedError
+
+    # (R/T)^beta -> (log R - log T) * beta
+    def logr_scaler(sol_size, gbatch=None):
+        logr = sol_size
+        return logr * reward_exp
+    return logr_scaler
 
 ######### Pytorch Utils
 
