@@ -5,7 +5,6 @@ import functools
 import gzip, pickle
 
 import networkx as nx
-import torch
 from torch.utils.data import Dataset, DataLoader
 import dgl
 
