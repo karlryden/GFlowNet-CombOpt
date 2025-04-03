@@ -56,15 +56,29 @@ if __name__ == '__main__':
 
         if args.constrain:  # NOTE: Should unconstrained examples also be generated? 
             # TODO: Implement and train a 'critic' to skip indicators
-            constraint_type = random.choice(['inclusion', 'exclusion'])
-            constrained_node = random.choice(list(g.nodes()))
-            constraint = f'This is constraint #{i}.' # TODO: Call LLM-API(type, node; g) here
+            constraint_type = np.random.choice(['none', 'inclusion', 'exclusion']) # Randomly choose the constraint type
+
+            if constraint_type != 'none':
+                constrained_nodes = np.random.choice(   # Pick U[|V|//4, |V|//2] nodes to constrain
+                    g.number_of_nodes(), 
+                    size=g.number_of_nodes() // 4 + np.random.choice(g.number_of_nodes() // 4), 
+                    replace=False
+                ).tolist()
+                # TODO: Call LLM-API(type, node; g) here
+                constraint = constraint_type + " constraint on node"
+                constraint += "s " if len(constrained_nodes) > 1 else " "
+                constraint += ", ".join(map(str, constrained_nodes))   
+
+            else:
+                constrained_nodes = []    
+                constraint = ""
+
 
             x['constraint'] = constraint
             x['signature'] = {
-                'type': constraint_type,
-                'node': constrained_node
-            }
+                    'type': constraint_type,
+                    'node': constrained_nodes
+                }
 
         output_file = path / (f'{stub}.pickle')
 
