@@ -100,6 +100,7 @@ class GIN(nn.Module):
             assert self.condition_dim == 0, "Conditioning signal is not provided."
 
         else:
+            c = c.to(g.device)
             if c.ndimension() == 1: # global (1D) conditioning (one graph)
                 assert g.batch_size == 1
                 C = c.unsqueeze(0).expand(g.num_nodes(), -1)

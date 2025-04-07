@@ -26,6 +26,9 @@ def get_llm(model_name, low_cpu_mem_usage=False):
 def get_last_hidden_layer(prompts, tokenizer, model):
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
 
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
     def mean_pool(hidden_states, attention_mask):
         # hidden_states: [batch_size, seq_len, hidden_dim]
         # attention_mask: [batch_size, seq_len]

@@ -111,7 +111,7 @@ class DetailedBalance(object):
         cbatch = self.parse_condition(cbatch)
 
         if penalty_fn is None:
-            penalty_fn = lambda s: 0
+            penalty_fn = lambda s: torch.tensor(0., device=s.device)
 
         env = get_mdp_class(cfg.task)(gbatch, cfg)
         state = env.state
