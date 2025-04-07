@@ -3,16 +3,16 @@ import torch
 # NOTE: I am worried about the tensors ending up on a different device to state.
 def get_indicator_fn(signature):
     constraint_type = signature['type']
-    constrained_node = signature['node']
+    constrained_nodes = signature['node']
 
     if constraint_type == 'none':
-        return lambda s: torch.tensor([1.0])
+        return lambda s: torch.tensor([1.0], device=s.device)
     
     elif constraint_type == 'inclusion':
-        return lambda s: (s[constrained_node] == 1).float()
+        return lambda s: (s[constrained_nodes] == 1).float().all()
     
     elif constraint_type == 'exclusion':
-        return lambda s: (s[constrained_node] == 0).float()
+        return lambda s: (s[constrained_nodes] == 0).float().all()
 
 def batch_indicators(gbatch, ibatch):
     cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
