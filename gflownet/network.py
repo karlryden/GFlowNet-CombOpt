@@ -29,30 +29,28 @@ class MLP_GIN(nn.Module):
 
 class GIN(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=5,
-                 condition_dim=0, graph_level_output=0, learn_eps=False, dropout=0.,
+                 graph_level_output=0, learn_eps=False, dropout=0.,
                  aggregator_type="sum", modulation_type="concat"):
         super().__init__()
 
         self.inp_embedding = nn.Embedding(input_dim, hidden_dim)
         self.hidden_dim = hidden_dim
-        self.condition_dim = condition_dim
 
         # TODO: Factor out modulation to be composed with the GIN from outside?
         if modulation_type == "none":
             ...
 
         elif modulation_type == "concat":
-            hidden_dim += condition_dim
+            hidden_dim *= 2
 
         elif modulation_type == "film":
             # TODO: Investigate having a film layer for each layer of the GIN
             self.films = nn.ModuleList()
             for _ in range(num_layers - 1):
-                self.films.append(nn.Linear(condition_dim, 2*hidden_dim))
+                self.films.append(nn.Linear(hidden_dim, 2*hidden_dim))
 
         elif modulation_type == "attend":
             raise NotImplementedError
-            # TODO: Keys and values need to be of the same dimension. Reduce c? 
             self.attention = nn.MultiheadAttention(hidden_dim, 1)
 
         else:
@@ -92,21 +90,20 @@ class GIN(nn.Module):
             g: dgl.DGLGraph, 
             state: torch.Tensor, 
             c: torch.Tensor=None,   # pass rows of c's in case of graph batch
-            reward_exp=None
         ):
-        assert reward_exp is None
-
         if c is None:
-            assert self.condition_dim == 0, "Conditioning signal is not provided."
+            assert self.condition == 'none', "Conditioning signal is not provided."
 
         else:
             c = c.to(g.device)
             if c.ndimension() == 1: # global (1D) conditioning (one graph)
-                assert g.batch_size == 1
+                assert g.batch_size == 1, "Conditioning signal must be 1D for a single graph."
+                assert len(c) == self.hidden_dim, "Conditioning signal dimension must match GNN hidden dimension."
                 C = c.unsqueeze(0).expand(g.num_nodes(), -1)
 
             elif c.ndimension() == 2:   # per-graph (2D) conditioning (batch of graphs)
-                assert len(c) == g.batch_size
+                assert c.shape[0] == g.batch_size, "Conditioning signal batch must match graph batch size."
+                assert c.shape[1] == self.hidden_dim, "Conditioning signal dimension must match GNN hidden dimension."
                 C = torch.repeat_interleave(
                     c, g.batch_num_nodes(), dim=0
                 )
@@ -153,7 +150,8 @@ class GIN(nn.Module):
 
 if __name__ == '__main__':
     import networkx as nx
-    
+    from torch.nn import Linear
+
     g = dgl.DGLGraph()
     g.add_nodes(4)
     g.add_edges([0, 1, 2, 3], [1, 2, 3, 0])
@@ -162,9 +160,14 @@ if __name__ == '__main__':
     nx.draw(n, with_labels=True)
 
     gin = GIN(3, g.num_nodes(), hidden_dim=8)
-    cin = GIN(3, g.num_nodes(), hidden_dim=8, condition_dim=3, modulation_type="film")
+    cin = GIN(3, g.num_nodes(), hidden_dim=8, modulation_type="film")
 
     s = torch.full((g.num_nodes(),), 2, dtype=torch.long)
     c = torch.tensor([1, 2, 3], dtype=torch.float32)
 
-    h = cin(g, s, c)
+    L = Linear(3, 8)
+
+    print(g.batch_size)
+    print(L(c).shape)
+
+    h = cin(g, s, L(c))

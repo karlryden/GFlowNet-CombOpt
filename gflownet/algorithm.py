@@ -7,7 +7,6 @@ import dgl
 from util import TransitionBuffer
 from combopt import get_decided, pad_batch, get_parent, get_mdp_class
 from network import GIN
-from llm import get_tokenizer, get_llm, get_last_hidden_layer
 
 def sample_from_logits(pf_logits, gb, state, done, rand_prob=0.):
     numnode_per_graph = gb.batch_num_nodes().tolist()
@@ -39,15 +38,14 @@ class DetailedBalance(object):
         self.device = device
 
         assert cfg.arch in ["gin"]
-        gin_dict = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.hidden_layer,
-                    "condition_dim": cfg.condition_dim, "modulation_type": cfg.modulation, 
-                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps, "aggregator_type": cfg.aggr}
+        gin_dict = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.hidden_layer, 
+                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps, 
+                    "aggregator_type": cfg.aggr, "modulation_type": cfg.condition}
         self.model = GIN(3, 1, graph_level_output=0, **gin_dict).to(device)
         self.model_flow = GIN(3, 0, graph_level_output=1, **gin_dict).to(device)
-        if cfg.llm != 'none' and cfg.llm_dim > 0:
-            self.tokenizer = get_tokenizer(cfg.llm)
-            self.llm = get_llm(cfg.llm, low_cpu_mem_usage=True)
-            self.proj = nn.Linear(cfg.llm_dim, cfg.condition_dim)
+        if cfg.condition_dim > 0:
+            assert cfg.condition != 'none', "Conditioning method not provided."
+            self.proj = nn.Linear(cfg.condition_dim, cfg.hidden_dim)
 
         self.params = [
             {"params": self.model.parameters(), "lr": cfg.lr},
@@ -59,26 +57,15 @@ class DetailedBalance(object):
     def parameters(self):
         return list(self.model.parameters()) + list(self.model_flow.parameters())
 
-    def parse_condition(self, cb):
-        if self.cfg.llm != 'none' and self.cfg.llm_dim > 0:
-            if not isinstance(cb, torch.Tensor):
-                assert isinstance(cb, list), "Condition batch must be either a tensor or a list of strings."
-                assert all(isinstance(c, str) for c in cb), "All conditions in list must be strings."
-                H = get_last_hidden_layer(cb, self.tokenizer, self.llm).to(self.proj.weight)
-
-                return self.proj(H)
-        else:
-            return cb
-
     @torch.no_grad()
     def sample(self, 
             gb, state, done, 
             cb=None, 
-            rand_prob=0., temperature=1., reward_exp=None
+            rand_prob=0., temperature=1.
         ):
         self.model.eval()
 
-        pf_logits = self.model(gb, state, c=cb, reward_exp=reward_exp)[..., 0]   # [..., 0] selects the logits in case of graph level output
+        pf_logits = self.model(gb, state, c=cb)[..., 0]   # [..., 0] selects the logits in case of graph level output
 
         return sample_from_logits(pf_logits / temperature, gb, state, done, rand_prob=rand_prob)
 
@@ -101,14 +88,15 @@ class DetailedBalance(object):
     def train_step(self, *batch):
         raise NotImplementedError
 
-    @torch.no_grad()
     def rollout(self, 
             gbatch: dgl.DGLGraph, 
-            cfg, reward_exp=None, 
+            cfg,
             cbatch: torch.Tensor=None, 
             penalty_fn=None
         ):
-        cbatch = self.parse_condition(cbatch)
+        if cfg.condition_dim > 0:
+            assert cbatch is not None, "Conditioning signal is not provided."
+            cbatch = self.proj(cbatch)
 
         if penalty_fn is None:
             penalty_fn = lambda s: torch.tensor(0., device=s.device)
@@ -120,7 +108,7 @@ class DetailedBalance(object):
         # state, action, done, reward
         traj_s, traj_r, traj_a, traj_d = [], [], [], []
         while not all(env.done):
-            action = self.sample(gbatch, state, env.done, cb=cbatch, rand_prob=cfg.randp, reward_exp=None)
+            action = self.sample(gbatch, state, env.done, cb=cbatch, rand_prob=cfg.randp)
             traj_s.append(state)
             traj_r.append(env.get_log_reward(penalty=penalty_fn(state)))
             traj_a.append(action)
@@ -161,9 +149,13 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         self.forward_looking = (cfg.alg == "fl")
         super(DetailedBalanceTransitionBuffer, self).__init__(cfg, device)
 
-    def train_step(self, *batch, cbatch=None, reward_exp=None, logr_scaler=None):
+    def train_step(self, *batch, cbatch=None, logr_scaler=None):
         self.model.train()
         self.model_flow.train()
+        if cbatch is not None:
+            assert hasattr(self, "proj"), "Projection not defined, check condition_dim in config."
+            self.proj.train()
+
         torch.cuda.empty_cache()
 
         gb, s, logr, a, s_next, logr_next, d = batch
@@ -176,11 +168,11 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
-        cbatch = self.parse_condition(cbatch)
+        cbatch = None if cbatch is None else self.proj(cbatch)
         cbatch_two = None if cbatch is None else cbatch.repeat(gb_two.batch_size // cbatch.shape[0], 1)
 
-        logits = self.model(gb_two, s_two, c=cbatch_two, reward_exp=reward_exp)
-        _, flows_out = self.model_flow(gb_two, s_two, c=cbatch_two, reward_exp=reward_exp) # (2 * num_graphs, 1)
+        logits = self.model(gb_two, s_two, c=cbatch_two)
+        _, flows_out = self.model_flow(gb_two, s_two, c=cbatch_two) # (2 * num_graphs, 1)
         flows, flows_next = flows_out[:batch_size, 0], flows_out[batch_size:, 0]
 
         pf_logits = logits[:total_num_nodes, ..., 0]

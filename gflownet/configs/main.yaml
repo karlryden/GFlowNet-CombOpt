@@ -2,7 +2,7 @@ defaults:
   - override hydra/launcher: submitit_slurm
 
 task: mis
-input: rb200-300
+input: rb200-300sc
 wandb: 0
 d: 0  # -1 for cpu
 seed: 0
@@ -22,7 +22,7 @@ learn_eps: true
 # GFlowNet algorithm
 alg: fl
 onpolicy: true
-epochs: 20
+epochs: 4
 trainsize: 4000
 testsize: 500
 tstep: 30
@@ -48,12 +48,13 @@ penalty: linear
 pargs: [0.75]
 
 # Conditioning
-modulation: concat
-condition_dim: 256
+condition: concat
+project: true
+condition_dim: 2048 # check hidden dimension of your LLaMA model
 
 # LLM
 llm: meta-llama/Llama-3.2-1B-Instruct
-llm_dim: 2048 # check hidden dimension of your LLaMA model
+low_cpu_mem_usage: false
 
 hydra:
   run:
