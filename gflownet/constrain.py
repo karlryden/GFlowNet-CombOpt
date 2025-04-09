@@ -1,18 +1,17 @@
+from functools import partial
 import torch
 
-# NOTE: I am worried about the tensors ending up on a different device to state.
+indicators = {  # add custom indicators here
+    'none': lambda s, nodes: torch.tensor([1.0], device=s.device),
+    'inclusion': lambda s, nodes: (s[nodes] == 1).float().all(),
+    'exclusion': lambda s, nodes: (s[nodes] == 0).float().all(),
+}
+
 def get_indicator_fn(signature):
     constraint_type = signature['type']
     constrained_nodes = signature['node']
 
-    if constraint_type == 'none':
-        return lambda s: torch.tensor([1.0], device=s.device)
-    
-    elif constraint_type == 'inclusion':
-        return lambda s: (s[constrained_nodes] == 1).float().all()
-    
-    elif constraint_type == 'exclusion':
-        return lambda s: (s[constrained_nodes] == 0).float().all()
+    return partial(indicators[constraint_type], nodes=constrained_nodes)
 
 def batch_indicators(gbatch, ibatch):
     cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
