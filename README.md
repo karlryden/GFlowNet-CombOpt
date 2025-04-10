@@ -1,8 +1,12 @@
 # GNN-CO
 
-The correct version of $\texttt{dgl}$ can be fetched using 
+The correct versions of $\texttt{dgl}$ and \texttt{hydra} can be fetched using 
 ```
 pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/cu124/repo.html
+```
+and
+```
+pip install hydra-core==1.1.0 omegaconf submitit hydra-submitit-launcher
 ```
 
 
