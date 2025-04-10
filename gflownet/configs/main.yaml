@@ -2,7 +2,7 @@ defaults:
   - override hydra/launcher: submitit_slurm
 
 task: mis
-input: rb200-300sc
+input: rb200-300
 wandb: 0
 d: 0  # -1 for cpu
 seed: 0
@@ -13,8 +13,8 @@ eval_freq: 200
 
 # for GIN
 arch: gin
-hidden_dim: 8
-hidden_layer: 2
+hidden_dim: 256
+hidden_layer: 5
 dropout: 0.
 aggr: sum
 learn_eps: true
@@ -22,13 +22,13 @@ learn_eps: true
 # GFlowNet algorithm
 alg: fl
 onpolicy: true
-epochs: 4
-trainsize: 100
-testsize: 20
-tstep: 3
-bsit: 2
-bs: 16
-tbs: 3
+epochs: 20
+trainsize: 4000
+testsize: 500
+tstep: 30
+bsit: 8
+bs: 64
+tbs: 30
 shuffle: true # for train loader
 num_workers: 0 # for dataloader
 sameg: false # use same graph across one batch
