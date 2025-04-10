@@ -92,7 +92,7 @@ class GIN(nn.Module):
             c: torch.Tensor=None,   # pass rows of c's in case of graph batch
         ):
         if c is None:
-            assert self.condition == 'none', "Conditioning signal is not provided."
+            assert self.modulation_type == 'none', "Conditioning signal is not provided."
 
         else:
             c = c.to(g.device)

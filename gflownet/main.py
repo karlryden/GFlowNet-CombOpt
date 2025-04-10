@@ -15,11 +15,10 @@ from util import refine_cfg, seed_torch, get_logr_scaler
 from combopt import get_mdp_class
 from algorithm import get_alg_buffer
 from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
-from llm import embed_constraints
 
 torch.backends.cudnn.benchmark = True
 
-@hydra.main(config_path="configs", config_name="main") # for hydra-core==1.1.0
+@hydra.main(config_path="configs", config_name="main", version_base=None) # for hydra-core==1.1.0
 # @hydra.main(version_base=None, config_path="configs", config_name="main") # for newer hydra
 def main(cfg):
     cfg = refine_cfg(cfg)
@@ -31,7 +30,11 @@ def main(cfg):
     print(str(cfg))
     print(f"Work directory: {os.getcwd()}")
 
-    embed_constraints(cfg)
+    if cfg.llm != 'none':
+        from llm import embed_constraints
+        embed_constraints(cfg)
+        print("Embedding done — exiting.")
+        exit()
 
     train_loader, test_loader = get_data_loaders(cfg)
     trainset_size = len(train_loader.dataset)
@@ -122,7 +125,7 @@ def main(cfg):
             ###### rollout
             batch, metric_ls = alg.rollout(
                 gbatch, 
-                cfg, alg, 
+                cfg,
                 cbatch=ebatch, 
                 penalty_fn=penalty_fn)
 
@@ -142,7 +145,7 @@ def main(cfg):
                     break
                 curr_indices = random.sample(indices, min(len(indices), batch_size))
                 batch = buffer.sample_from_indices(curr_indices)
-                train_info = alg.train_step(*batch, cbatch=cbatch, reward_exp=reward_exp, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
+                train_info = alg.train_step(*batch, cbatch=cbatch, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
                 indices = [i for i in indices if i not in curr_indices]
 
             if cfg.onpolicy:

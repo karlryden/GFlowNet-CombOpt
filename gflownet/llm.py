@@ -2,12 +2,17 @@ import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+import gc
+
 from pathlib import Path
 import pickle
 from tqdm import tqdm
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message="You are using `torch.load` with `weights_only=False`.*")
 
 def get_tokenizer(model_name):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -87,3 +92,9 @@ def embed_constraints(cfg):
                     pickle.dump(x, p, pickle.HIGHEST_PROTOCOL)
     else:
         print("All constraints already embedded.")
+
+    del tokenizer
+    del llm
+    
+    torch.cuda.empty_cache()
+    gc.collect()
