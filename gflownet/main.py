@@ -18,7 +18,7 @@ from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
 
 torch.backends.cudnn.benchmark = True
 
-@hydra.main(config_path="configs", config_name="main", version_base=None) # for hydra-core==1.1.0
+@hydra.main(config_path="configs", config_name="main") # for hydra-core==1.1.0
 # @hydra.main(version_base=None, config_path="configs", config_name="main") # for newer hydra
 def main(cfg):
     cfg = refine_cfg(cfg)
