@@ -48,7 +48,7 @@ penalty: linear
 pargs: [0.75]
 
 # Conditioning
-condition: none
+condition: none # none, concat, film, (attend)
 project: true
 condition_dim: 0 # check hidden dimension of your LLaMA model
 
