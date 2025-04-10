@@ -1,3 +1,6 @@
+import multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 import sys, os
 import pathlib
 from pathlib import Path
@@ -60,10 +63,9 @@ def _prepare_instances(instance_directory: pathlib.Path, cache_directory: pathli
     )
     imap_unordered_bar(prepare_instance, resolved_graph_paths, n_processes=None)
 
-from multiprocessing import Pool
 from tqdm import tqdm
 def imap_unordered_bar(func, args, n_processes=2):
-    p = Pool(n_processes)
+    p = mp.Pool(n_processes)
     args = list(args)
     res_list = []
     with tqdm(total=len(args)) as pbar:
@@ -91,11 +93,11 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
             x = pickle.load(source_instance_file)
             g = x['graph']
             c = None if 'constraint' not in x.keys() else x['constraint']
-            e = None if 'embedding' not in x.keys() else x['embedding']
+            e = None if 'embedding' not in x.keys() else x['embedding'].cpu()
             s = None if 'signature' not in x.keys() else x['signature']
 
-    except:
-        print(f"Failed to read {source_instance_path}.")
+    except Exception as e:
+        print(f"Failed to read {source_instance_path}: {e}.")
         return
 
     g.remove_edges_from(nx.selfloop_edges(g)) # remove self loops
