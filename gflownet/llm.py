@@ -2,6 +2,10 @@ import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+from pathlib import Path
+import pickle
+from tqdm import tqdm
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -11,11 +15,11 @@ def get_tokenizer(model_name):
 
     return tokenizer
 
-def get_llm(model_name, low_cpu_mem_usage=False):
+def get_llm(model_name):
     model = AutoModelForCausalLM.from_pretrained(
         model_name, 
         torch_dtype="auto", 
-        low_cpu_mem_usage=low_cpu_mem_usage, 
+        low_cpu_mem_usage=True, 
         device_map="auto"
     )
 
@@ -42,3 +46,44 @@ def get_last_hidden_layer(prompts, tokenizer, model):
         last_hidden = outputs.hidden_states[-1]
 
     return mean_pool(last_hidden, inputs["attention_mask"])
+
+def embed_constraints(cfg):
+    data_path = Path(__file__).parent.parent / "data"
+    data_path = data_path / Path(cfg.input)  # string to pathlib.Path
+
+    pickles = list(data_path.rglob("*.pickle"))
+
+    consts = []
+    files = []
+
+    print("Collecting constraints...")
+    for f in pickles:
+
+        with open(f, 'rb') as p:
+            x = pickle.load(p)
+            assert 'constraint' in x.keys(), f"Missing constraint in {f}."
+            if 'embedding' not in x.keys():
+                files.append(f)
+                consts.append(x['constraint'])
+
+    tokenizer = get_tokenizer(cfg.llm)
+    llm = get_llm(cfg.llm)
+
+    if consts:
+        print(f"Embedding {len(consts)} constraints in batches...")
+        for i in tqdm(range(0, len(consts), cfg.llm_batch_size)):
+            cbatch = consts[i:i+cfg.llm_batch_size]
+            fbatch = files[i:i+cfg.llm_batch_size]
+
+            ebatch = get_last_hidden_layer(cbatch, tokenizer, llm)
+
+            for e, f in zip(ebatch, fbatch):
+                with open(f, 'rb') as p:
+                    x = pickle.load(p)
+
+                x['embedding'] = e
+
+                with open(f, 'wb') as p:
+                    pickle.dump(x, p, pickle.HIGHEST_PROTOCOL)
+    else:
+        print("All constraints already embedded.")

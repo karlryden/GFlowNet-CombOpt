@@ -54,7 +54,7 @@ condition_dim: 2048 # check hidden dimension of your LLaMA model
 
 # LLM
 llm: meta-llama/Llama-3.2-1B-Instruct
-low_cpu_mem_usage: false
+llm_batch_size: 8
 
 hydra:
   run:

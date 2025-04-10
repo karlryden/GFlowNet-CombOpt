@@ -2,12 +2,12 @@ import sys, os
 import pathlib
 from pathlib import Path
 import functools
-import gzip, pickle
+import pickle
 
 import networkx as nx
+import torch
 from torch.utils.data import Dataset, DataLoader
 import dgl
-
 
 def read_dgl_from_graph(graph_path):
     with open(graph_path, 'rb') as graph_file:
@@ -24,7 +24,7 @@ class GraphDataset(Dataset):
         assert data_dir is not None
         self.data_dir = data_dir
         self.graph_paths = sorted(list(self.data_dir.rglob("*.graph")))
-        self.constraint_paths = sorted(list(self.data_dir.rglob("*.pickle")))
+        self.constraint_paths = sorted(list(self.data_dir.rglob("*.pt")))
         if self.constraint_paths:
             assert len(self.graph_paths) == len(self.constraint_paths)
 
@@ -35,14 +35,14 @@ class GraphDataset(Dataset):
 
     def __getitem__(self, idx):
         g = read_dgl_from_graph(self.graph_paths[idx])
-        
+
         if self.constraint_paths:
-            with open(self.constraint_paths[idx], 'rb') as constraint_path:
-                constraint = pickle.load(constraint_path)
-                c = constraint['constraint']
-                s = constraint['signature']
-            
-            return g, {'constraint': c, 'signature': s}
+            pt = torch.load(self.constraint_paths[idx])
+            c = pt['constraint']
+            e = pt['embedding']
+            s = pt['signature']
+
+            return g, {'constraint': c, 'embedding': e, 'signature': s}
 
         else:
             return g, None
@@ -90,14 +90,10 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
         with open(source_instance_path, 'rb') as source_instance_file:
             x = pickle.load(source_instance_file)
             g = x['graph']
+            c = None if 'constraint' not in x.keys() else x['constraint']
+            e = None if 'embedding' not in x.keys() else x['embedding']
+            s = None if 'signature' not in x.keys() else x['signature']
 
-            if 'constraint' in x.keys():
-                c = x['constraint']
-                s = x['signature']
-
-            else:
-                c = None
-                s = None
     except:
         print(f"Failed to read {source_instance_path}.")
         return
@@ -109,8 +105,13 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
     print(f"Updated graph file: {source_instance_path}.")
 
     if c is not None:
-        with open(dest_stem.with_suffix(".pickle"), 'wb') as constraint_file:
-            pickle.dump({"constraint": c, "signature": s}, constraint_file, pickle.HIGHEST_PROTOCOL)
+        torch.save({
+            'constraint': c,
+            'embedding': e,
+            'signature': s
+        }, dest_stem.with_suffix(".pt"))
+
+        print(f'Updated constraint: {source_instance_path}.')
 
 def collate_fn(samples):
     graphs = [x[0] for x in samples]
@@ -118,15 +119,15 @@ def collate_fn(samples):
 
     if samples[0][1] is not None:
         consts = [x[1] for x in samples]
-
+        cbatch = torch.stack([c['embedding'] for c in consts])
     else:
-        consts = []
+        cbatch = None
 
-    return gbatch, consts
+    return gbatch, cbatch
 
 def get_data_loaders(cfg):
     data_path = Path(__file__).parent.parent / "data"
-    data_path = data_path / pathlib.Path(cfg.input)  # string to pathlib.Path
+    data_path = data_path / Path(cfg.input)  # string to pathlib.Path
     print(f"Loading data from {data_path}.")
 
     preprocessed_name = "gfn"

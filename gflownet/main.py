@@ -15,6 +15,7 @@ from util import refine_cfg, seed_torch, get_logr_scaler
 from combopt import get_mdp_class
 from algorithm import get_alg_buffer
 from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
+from llm import embed_constraints
 
 torch.backends.cudnn.benchmark = True
 
@@ -29,6 +30,8 @@ def main(cfg):
     seed_torch(cfg.seed)
     print(str(cfg))
     print(f"Work directory: {os.getcwd()}")
+
+    embed_constraints(cfg)
 
     train_loader, test_loader = get_data_loaders(cfg)
     trainset_size = len(train_loader.dataset)
@@ -91,12 +94,14 @@ def main(cfg):
 
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
-            if constbatch:
-                cbatch = [const["constraint"] for const in constbatch]
-                ibatch = [get_indicator_fn(const["signature"]) for const in constbatch]
+            if constbatch is not None:
+                cbatch = [const['constraint'] for const in constbatch]                  # batch of textual constraints
+                ebatch = [const['condition'] for const in constbatch]                   # batch of embeddings
+                ibatch = [get_indicator_fn(const['signature']) for const in constbatch] # batch of indicators
                 indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
             else:
                 cbatch = None
+                ebatch = None
                 indicator = None
 
             penalty_fn = None if indicator is None else get_penalty_fn(cfg, gbatch, indicator)
@@ -118,7 +123,7 @@ def main(cfg):
             batch, metric_ls = alg.rollout(
                 gbatch, 
                 cfg, alg, 
-                cbatch=cbatch, 
+                cbatch=ebatch, 
                 penalty_fn=penalty_fn)
 
             buffer.add_batch(batch)
