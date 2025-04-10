@@ -33,8 +33,6 @@ def main(cfg):
     if cfg.llm != 'none':
         from llm import embed_constraints
         embed_constraints(cfg)
-        print("Embedding done — exiting.")
-        exit()
 
     train_loader, test_loader = get_data_loaders(cfg)
     trainset_size = len(train_loader.dataset)
@@ -99,15 +97,15 @@ def main(cfg):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
             if constbatch is not None:
                 cbatch = [const['constraint'] for const in constbatch]                  # batch of textual constraints
-                ebatch = [const['condition'] for const in constbatch]                   # batch of embeddings
+                ebatch = torch.stack([const['embedding'] for const in constbatch])      # batch of embeddings
                 ibatch = [get_indicator_fn(const['signature']) for const in constbatch] # batch of indicators
-                indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
+                indicator_fn = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
             else:
                 cbatch = None
                 ebatch = None
                 indicator = None
 
-            penalty_fn = None if indicator is None else get_penalty_fn(cfg, gbatch, indicator)
+            penalty_fn = None if indicator_fn is None else get_penalty_fn(cfg, gbatch, indicator_fn)
 
             reward_exp = None
             process_ratio = max(0., min(1., train_data_used / cfg.annend))
@@ -145,7 +143,7 @@ def main(cfg):
                     break
                 curr_indices = random.sample(indices, min(len(indices), batch_size))
                 batch = buffer.sample_from_indices(curr_indices)
-                train_info = alg.train_step(*batch, cbatch=cbatch, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
+                train_info = alg.train_step(*batch, cbatch=ebatch, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
                 indices = [i for i in indices if i not in curr_indices]
 
             if cfg.onpolicy:

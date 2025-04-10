@@ -71,13 +71,13 @@ class GraphCombOptMDP(object):
 
         raise NotImplementedError
 
-    def get_log_reward(self, state=None, penalty=0):
+    def get_log_reward(self, state=None, penalty=torch.tensor(0.)):
         if state is None:
             state = self.state.clone()
 
         padded_state = pad_batch(state, self.numnode_per_graph, padding_value=2)
 
-        return -self.energy_fn(padded_state) + penalty
+        return -self.energy_fn(padded_state) + penalty.to(padded_state.device)
         
     def energy_fn(self, state):
         # Problem-specific energy function implemented as in the appendix

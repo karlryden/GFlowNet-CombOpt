@@ -61,7 +61,12 @@ def _prepare_instances(instance_directory: pathlib.Path, cache_directory: pathli
         cache_directory=cache_directory,
         **kwargs,
     )
-    imap_unordered_bar(prepare_instance, resolved_graph_paths, n_processes=None)
+    # imap_unordered_bar(prepare_instance, resolved_graph_paths, n_processes=None)  # NOTE: Causes a huge headache on GPU cluster for some reason
+
+    # Use a simple for loop instead of imap_unordered_bar to avoid multiprocessing issues
+    for path in tqdm(resolved_graph_paths):
+        _prepare_instance(path, cache_directory=cache_directory, **kwargs)
+
 
 from tqdm import tqdm
 def imap_unordered_bar(func, args, n_processes=2):
@@ -120,12 +125,11 @@ def collate_fn(samples):
     gbatch = dgl.batch(graphs)
 
     if samples[0][1] is not None:
-        consts = [x[1] for x in samples]
-        cbatch = torch.stack([c['embedding'] for c in consts])
+        constbatch = [x[1] for x in samples]
     else:
-        cbatch = None
+        constbatch = None
 
-    return gbatch, cbatch
+    return gbatch, constbatch
 
 def get_data_loaders(cfg):
     data_path = Path(__file__).parent.parent / "data"

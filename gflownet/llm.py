@@ -86,7 +86,7 @@ def embed_constraints(cfg):
                 with open(f, 'rb') as p:
                     x = pickle.load(p)
 
-                x['embedding'] = e
+                x['embedding'] = e.cpu().float()
 
                 with open(f, 'wb') as p:
                     pickle.dump(x, p, pickle.HIGHEST_PROTOCOL)
