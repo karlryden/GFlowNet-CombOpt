@@ -97,6 +97,7 @@ class DetailedBalance(object):
         ):
         if cfg.condition_dim > 0:
             assert cbatch is not None, "Conditioning signal is not provided."
+            cbatch = cbatch.to(self.device)
             cbatch = self.proj(cbatch)
 
         if penalty_fn is None:
