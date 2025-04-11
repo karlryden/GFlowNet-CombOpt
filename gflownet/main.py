@@ -56,25 +56,27 @@ def main(cfg):
         pbar.set_description(f"Test Epoch {ep:2d} Data used {train_data_used:5d}")
         for batch_idx, (gbatch, constbatch) in pbar:
             gbatch = gbatch.to(device)
-            if constbatch:
-                cbatch = [const["constraint"] for const in constbatch]
-                ibatch = [get_indicator_fn(const["signature"]) for const in constbatch]
-                indicator = batch_indicators(gbatch, ibatch)    # NOTE: When using hard-coded indicators
+            if constbatch is not None:
+                ebatch = torch.stack([const['embedding'] for const in constbatch]).to(device)
+                ibatch = [get_indicator_fn(const['signature']) for const in constbatch]
+                indicator_fn = batch_indicators(gbatch, ibatch)
             else:
-                cbatch = None
-                indicator = None
+                ebatch = None
+                indicator_fn = None
 
-            penalty_fn = None if indicator is None else get_penalty_fn(cfg, gbatch, indicator)
+            penalty_fn = lambda s: torch.tensor(0., device=s.device) if indicator_fn is None \
+                  else get_penalty_fn(cfg, gbatch, indicator_fn)
 
-            gbatch_rep = dgl.batch([gbatch] * num_repeat)   # TODO: Mirror this for constbatch
+            gbatch_rep = dgl.batch([gbatch] * num_repeat)
+            ebatch_rep = None if ebatch is None else torch.stack([ebatch] * num_repeat)
 
             env = get_mdp_class(cfg.task)(gbatch_rep, cfg)
             state = env.state
             while not all(env.done):
-                action = alg.sample(gbatch_rep, state, env.done, rand_prob=0.)
+                action = alg.sample(gbatch_rep, state, env.done, cb=ebatch_rep, rand_prob=0.)
                 state = env.step(action)
 
-            logr_rep = logr_scaler(env.get_log_reward())
+            logr_rep = logr_scaler(env.get_log_reward(penalty=penalty_fn(state)))
             logr_ls += logr_rep.tolist()
             curr_mis_rep = torch.tensor(env.batch_metric(state))
             curr_mis_rep = rearrange(curr_mis_rep, "(rep b) -> b rep", rep=num_repeat).float()
@@ -103,7 +105,7 @@ def main(cfg):
             else:
                 cbatch = None
                 ebatch = None
-                indicator = None
+                indicator_fn = None
 
             penalty_fn = None if indicator_fn is None else get_penalty_fn(cfg, gbatch, indicator_fn)
 
@@ -143,7 +145,7 @@ def main(cfg):
                     break
                 curr_indices = random.sample(indices, min(len(indices), batch_size))
                 batch = buffer.sample_from_indices(curr_indices)
-                train_info = alg.train_step(*batch, cbatch=ebatch, logr_scaler=logr_scaler)  # TODO: Batch c with batch?
+                train_info = alg.train_step(*batch, logr_scaler=logr_scaler)
                 indices = [i for i in indices if i not in curr_indices]
 
             if cfg.onpolicy:

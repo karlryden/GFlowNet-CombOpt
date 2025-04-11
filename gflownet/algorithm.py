@@ -139,7 +139,10 @@ class DetailedBalance(object):
         """
         traj_len = 1 + torch.sum(~traj_d, dim=1) # (batch_size, )
 
-        batch = gbatch.cpu(), traj_s.cpu(), traj_a.cpu(), traj_d.cpu(), traj_r.cpu(), traj_len.cpu()
+        if cbatch is not None:
+            cbatch = cbatch.cpu()
+
+        batch = gbatch.cpu(), cbatch, traj_s.cpu(), traj_a.cpu(), traj_d.cpu(), traj_r.cpu(), traj_len.cpu()
 
         return batch, env.batch_metric(state)
 
@@ -149,16 +152,17 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         self.forward_looking = (cfg.alg == "fl")
         super(DetailedBalanceTransitionBuffer, self).__init__(cfg, device)
 
-    def train_step(self, *batch, cbatch=None, logr_scaler=None):
+    def train_step(self, *batch, logr_scaler=None):
         self.model.train()
         self.model_flow.train()
-        if cbatch is not None:
+
+        gb, cb, s, logr, a, s_next, logr_next, d = batch
+
+        if cb is not None:
             assert hasattr(self, "proj"), "Projection not defined, check condition_dim in config."
             self.proj.train()
+            cb = cb.to(self.device)
 
-        torch.cuda.empty_cache()
-
-        gb, s, logr, a, s_next, logr_next, d = batch
         gb, s, logr, a, s_next, logr_next, d = gb.to(self.device), s.to(self.device), logr.to(self.device), \
                     a.to(self.device), s_next.to(self.device), logr_next.to(self.device), d.to(self.device)
         logr, logr_next = logr_scaler(logr), logr_scaler(logr_next)
@@ -168,11 +172,15 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
-        cbatch = None if cbatch is None else self.proj(cbatch)
-        cbatch_two = None if cbatch is None else cbatch.repeat(gb_two.batch_size // cbatch.shape[0], 1)
 
-        logits = self.model(gb_two, s_two, c=cbatch_two)
-        _, flows_out = self.model_flow(gb_two, s_two, c=cbatch_two) # (2 * num_graphs, 1)
+        if cb is None:
+            cb_two = None
+        else:
+            cb = self.proj(cb)
+            cb_two = torch.repeat_interleave(cb, repeats=2, dim=0)
+
+        logits = self.model(gb_two, s_two, c=cb_two)
+        _, flows_out = self.model_flow(gb_two, s_two, c=cb_two) # (2 * num_graphs, 1)
         flows, flows_next = flows_out[:batch_size, 0], flows_out[batch_size:, 0]
 
         pf_logits = logits[:total_num_nodes, ..., 0]
