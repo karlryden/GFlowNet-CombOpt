@@ -2,7 +2,7 @@ defaults:
   - override hydra/launcher: submitit_slurm
 
 task: mis
-input: rb200-300
+input: rb200-300sc
 wandb: 0
 d: 0  # -1 for cpu
 seed: 0
@@ -48,14 +48,13 @@ penalty: linear
 pargs: [0.75]
 
 # Conditioning
-condition: none # none, concat, film, (attend)
+condition: concat # none, concat, film, (attend)
 project: true
-condition_dim: 0 # check hidden dimension of your LLaMA model
+condition_dim: 3072 # check hidden dimension of your LLaMA model
 
 # LLM
-llm: none
-# llm: meta-llama/Llama-3.2-1B-Instruct
-llm_batch_size: 8
+llm: meta-llama/Llama-3.2-3B-Instruct
+llm_batch_size: 16
 
 hydra:
   run:
