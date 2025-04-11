@@ -129,7 +129,7 @@ class TransitionBuffer(object):
         self.pos = 0
 
     def add_batch(self, batch):
-        gb, traj_s, traj_a, traj_d, traj_r, traj_len = batch
+        gb, cb, traj_s, traj_a, traj_d, traj_r, traj_len = batch
         numnode_per_graph = gb.batch_num_nodes().tolist()
         batch_size = gb.batch_size  # num_graph
         g_list = dgl.unbatch(gb)
@@ -137,6 +137,7 @@ class TransitionBuffer(object):
 
         for b_idx in range(batch_size):
             g_bidx = g_list[b_idx]
+            c_bidx = cb[b_idx]
             traj_len_bidx = traj_len[b_idx]
             traj_s_bidx = traj_s_tuple[b_idx][..., :traj_len_bidx]
             traj_a_bidx = traj_a[b_idx, :traj_len_bidx - 1]
@@ -144,7 +145,7 @@ class TransitionBuffer(object):
             traj_r_bidx = traj_r[b_idx, :traj_len_bidx]
 
             for i in range(traj_len_bidx - 1):
-                transition = (g_bidx, traj_s_bidx[:, i], traj_r_bidx[i], traj_a_bidx[i],
+                transition = (g_bidx, c_bidx, traj_s_bidx[:, i], traj_r_bidx[i], traj_a_bidx[i],
                               traj_s_bidx[:, i + 1], traj_r_bidx[i+1], traj_d_bidx[i])
                 self.add_single_transition(transition)
 
@@ -156,7 +157,7 @@ class TransitionBuffer(object):
 
     @staticmethod
     def transition_collate_fn(transition_ls):
-        gbatch, s_batch, logr_batch, a_batch, s_next_batch, logr_next_batch, d_batch = \
+        gbatch, cbatch, s_batch, logr_batch, a_batch, s_next_batch, logr_next_batch, d_batch = \
             zip(*transition_ls)  # s_batch is a list of tensors
         gbatch = dgl.batch(gbatch)
 
@@ -168,7 +169,7 @@ class TransitionBuffer(object):
         a_batch = torch.stack(a_batch, dim=0)
         d_batch = torch.stack(d_batch, dim=0)
 
-        return gbatch, s_batch, logr_batch, a_batch, s_next_batch, logr_next_batch, d_batch
+        return gbatch, cbatch, s_batch, logr_batch, a_batch, s_next_batch, logr_next_batch, d_batch
 
     def sample(self, batch_size):
         # random.sample: without replacement
