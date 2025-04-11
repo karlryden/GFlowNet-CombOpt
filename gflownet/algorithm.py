@@ -46,6 +46,7 @@ class DetailedBalance(object):
         if cfg.condition_dim > 0:
             assert cfg.condition != 'none', "Conditioning method not provided."
             self.proj = nn.Linear(cfg.condition_dim, cfg.hidden_dim)
+            self.proj = self.proj.to(self.device)
 
         self.params = [
             {"params": self.model.parameters(), "lr": cfg.lr},
