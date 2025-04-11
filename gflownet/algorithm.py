@@ -98,7 +98,6 @@ class DetailedBalance(object):
         if cfg.condition_dim > 0:
             assert cbatch is not None, "Conditioning signal is not provided."
             cbatch = cbatch.to(self.device)
-            cbatch = self.proj(cbatch)
 
         if penalty_fn is None:
             penalty_fn = lambda s: torch.tensor(0., device=s.device)
@@ -110,7 +109,7 @@ class DetailedBalance(object):
         # state, action, done, reward
         traj_s, traj_r, traj_a, traj_d = [], [], [], []
         while not all(env.done):
-            action = self.sample(gbatch, state, env.done, cb=cbatch, rand_prob=cfg.randp)
+            action = self.sample(gbatch, state, env.done, cb=self.proj(cbatch), rand_prob=cfg.randp)
             traj_s.append(state)
             traj_r.append(env.get_log_reward(penalty=penalty_fn(state)))
             traj_a.append(action)
