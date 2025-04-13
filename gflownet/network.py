@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import dgl
-import dgl.function as fn
 from dgl.nn.pytorch.conv import GINConv, GATConv, GraphConv
 from dgl.nn.pytorch.glob import MaxPooling
+
+from util import pad_batch
 
 """
 GIN architecture
@@ -50,8 +51,9 @@ class GIN(nn.Module):
                 self.films.append(nn.Linear(hidden_dim, 2*hidden_dim))
 
         elif modulation_type == "attend":
-            raise NotImplementedError
-            self.attention = nn.MultiheadAttention(hidden_dim, 1)
+            self.query = nn.Linear(hidden_dim, hidden_dim)
+            self.key = nn.Linear(hidden_dim, hidden_dim)
+            self.attention = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True)
 
         else:
             raise ValueError("Invalid modulation type.")
@@ -126,13 +128,24 @@ class GIN(nn.Module):
                     h = gamma * h + beta
 
                 elif self.modulation_type == "attend":
-                    
-                    # TODO: Project c and h to a common dimension,
-                    # then call nn.MultiHeadAttention with h as Q, C as K and V.
-                    
-                    # return h + attention(Q, K, V)? 
+                    Q = self.query(h)
+                    K = self.key(C)
+                    V = K
 
-                    raise NotImplementedError
+                    num_nodes_per_graph = g.batch_num_nodes().tolist()
+                    padded_Q = pad_batch(Q, num_nodes_per_graph, padding_value=0.)
+                    padded_K = pad_batch(K, num_nodes_per_graph, padding_value=0.)
+                    padded_V = pad_batch(V, num_nodes_per_graph, padding_value=0.)
+
+                    B, N, _ = padded_Q.shape
+                    pad_mask = torch.ones(B, N, dtype=torch.bool, device=h.device)
+                    for i, n in enumerate(num_nodes_per_graph):
+                        pad_mask[i, :n] = False
+
+                    o, _ = self.attention(padded_Q, padded_K, padded_V, key_padding_mask=pad_mask)
+                    h += torch.cat(
+                        [o[i,:n] for i, n in enumerate(num_nodes_per_graph)], dim=0
+                    )
 
             h = layer(g, h)
             h = self.batch_norms[i](h)
@@ -146,28 +159,3 @@ class GIN(nn.Module):
                    self.pool(g, score_over_layer[..., self.output_dim:])
         else:
             return score_over_layer
-
-
-if __name__ == '__main__':
-    import networkx as nx
-    from torch.nn import Linear
-
-    g = dgl.DGLGraph()
-    g.add_nodes(4)
-    g.add_edges([0, 1, 2, 3], [1, 2, 3, 0])
-
-    n = g.to_networkx()
-    nx.draw(n, with_labels=True)
-
-    gin = GIN(3, g.num_nodes(), hidden_dim=8)
-    cin = GIN(3, g.num_nodes(), hidden_dim=8, modulation_type="film")
-
-    s = torch.full((g.num_nodes(),), 2, dtype=torch.long)
-    c = torch.tensor([1, 2, 3], dtype=torch.float32)
-
-    L = Linear(3, 8)
-
-    print(g.batch_size)
-    print(L(c).shape)
-
-    h = cin(g, s, L(c))
