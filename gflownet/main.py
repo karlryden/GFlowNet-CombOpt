@@ -26,7 +26,8 @@ def main(cfg):
 
     if cfg.eval:
         from eval import evaluate
-        alg.load('./outputs/concat3B_best.pt')
+        if cfg.model != 'none':
+            alg.load(cfg.model)
         evaluate(cfg, device, test_loader, alg, 0, 0, None, None, None)
 
 if __name__ == "__main__":

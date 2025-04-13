@@ -8,8 +8,9 @@ d: 0  # -1 for cpu
 seed: 0
 print_freq: 3
 wandb_freq: null
-eval: false
+eval: true
 eval_freq: 200
+model: none
 
 # for GIN
 arch: gin
