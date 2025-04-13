@@ -142,7 +142,7 @@ class GIN(nn.Module):
                         pad_mask[j, :n] = False
 
                     o, _ = self.attention(padded_Q, padded_K, padded_V, key_padding_mask=pad_mask)
-                    h += torch.cat(
+                    h = h + torch.cat(
                         [o[i,:n] for i, n in enumerate(num_nodes_per_graph)], dim=0
                     )
 
