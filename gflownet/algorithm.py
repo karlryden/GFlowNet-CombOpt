@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl
 
-from util import TransitionBuffer
-from combopt import get_decided, pad_batch, get_parent, get_mdp_class
+from util import TransitionBuffer, pad_batch
+from combopt import get_decided, get_parent, get_mdp_class
 from network import GIN
 
 def sample_from_logits(pf_logits, gb, state, done, rand_prob=0.):
