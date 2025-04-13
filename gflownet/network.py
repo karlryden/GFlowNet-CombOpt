@@ -45,7 +45,6 @@ class GIN(nn.Module):
             hidden_dim *= 2
 
         elif modulation_type == "film":
-            # TODO: Investigate having a film layer for each layer of the GIN
             self.films = nn.ModuleList()
             for _ in range(num_layers - 1):
                 self.films.append(nn.Linear(hidden_dim, 2*hidden_dim))
@@ -139,8 +138,8 @@ class GIN(nn.Module):
 
                     B, N, _ = padded_Q.shape
                     pad_mask = torch.ones(B, N, dtype=torch.bool, device=h.device)
-                    for i, n in enumerate(num_nodes_per_graph):
-                        pad_mask[i, :n] = False
+                    for j, n in enumerate(num_nodes_per_graph):
+                        pad_mask[j, :n] = False
 
                     o, _ = self.attention(padded_Q, padded_K, padded_V, key_padding_mask=pad_mask)
                     h += torch.cat(
