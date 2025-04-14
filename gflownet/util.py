@@ -161,7 +161,7 @@ class TransitionBuffer(object):
             zip(*transition_ls)  # s_batch is a list of tensors
         gbatch = dgl.batch(gbatch)
 
-        if cbatch is not None:
+        if cbatch and (cbatch[0] is not None):
             cbatch = torch.stack(cbatch, dim=0)
         s_batch = torch.cat(s_batch, dim=0)  # (sum of # nodes in batch, )
         s_next_batch = torch.cat(s_next_batch, dim=0)
