@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 import dgl
 
 import warnings
-warnings.filterwarnings("ignore", category=FutureWarning, module="torch.serialization")
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def read_dgl_from_graph(graph_path):
     with open(graph_path, 'rb') as graph_file:
