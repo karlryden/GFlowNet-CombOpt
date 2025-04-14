@@ -12,6 +12,9 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import dgl
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.serialization")
+
 def read_dgl_from_graph(graph_path):
     with open(graph_path, 'rb') as graph_file:
         _g = pickle.load(graph_file)
