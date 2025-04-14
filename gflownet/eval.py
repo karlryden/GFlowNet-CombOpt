@@ -36,6 +36,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             action = alg.sample(gbatch_rep, state, env.done, cb=alg.proj(ebatch_rep), rand_prob=0.)
             state = env.step(action)
 
+        p_rep = torch.repeat_interleave(penalty_fn(state), num_repeat, dim=0)
         logr_rep = logr_scaler(env.get_log_reward(penalty=penalty_fn(state)))
         logr_ls += logr_rep.tolist()
         curr_mis_rep = torch.tensor(env.batch_metric(state))
