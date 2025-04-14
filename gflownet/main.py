@@ -18,7 +18,7 @@ def main(cfg):
         from llm import embed_constraints
         embed_constraints(cfg)
 
-    if cfg.eval_model != 'none':
+    if cfg.eval_model == 'none':
         train_loader, test_loader = get_data_loaders(cfg)
         alg, buffer = get_alg_buffer(cfg, device)
 
@@ -42,6 +42,9 @@ def main(cfg):
 
         from eval import evaluate
         from util import get_logr_scaler
+
+        logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
+        result = {"set_size": {}, "logr_scaled": {}, "train_step": {}, "train_data_used": {}}
 
         evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
 

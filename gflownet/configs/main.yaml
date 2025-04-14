@@ -10,7 +10,7 @@ print_freq: 3
 wandb_freq: null
 eval: true
 eval_freq: 200
-model: none
+eval_model: none
 
 # for GIN
 arch: gin
