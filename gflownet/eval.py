@@ -36,8 +36,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             action = alg.sample(gbatch_rep, state, env.done, cb=alg.proj(ebatch_rep), rand_prob=0.)
             state = env.step(action)
 
-        p_rep = torch.repeat_interleave(penalty_fn(state), num_repeat, dim=0)
-        logr_rep = logr_scaler(env.get_log_reward(penalty=p_rep))
+        logr_rep = logr_scaler(env.get_log_reward())    # unpenalized reward is reported for evaluation
         logr_ls += logr_rep.tolist()
         curr_mis_rep = torch.tensor(env.batch_metric(state))
         curr_mis_rep = rearrange(curr_mis_rep, "(rep b) -> b rep", rep=num_repeat).float()
@@ -49,6 +48,12 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
     print(f"[Eval] Epoch {ep}: Metric={np.mean(mis_ls):.2f}±{np.std(mis_ls):.2f}, "
           f"Top20={np.mean(mis_top20_ls):.2f}, "
           f"LogR={np.mean(logr_ls):.2e}±{np.std(logr_ls):.2e}")
+
+    if cfg.condition:
+        satisfied = indicator_fn(state)  # Boolean tensor of shape [batch_size]
+        satisfaction_rate = satisfied.float().mean().item()
+
+        print(f"[Eval] Constraint Satisfaction: {100 * satisfaction_rate:.1f}%")
 
     result["set_size"][ep] = np.mean(mis_ls)
     result["logr_scaled"][ep] = np.mean(logr_ls)
