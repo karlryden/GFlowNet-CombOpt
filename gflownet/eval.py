@@ -27,10 +27,11 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
                      get_penalty_fn(cfg, gbatch, indicator_fn)
 
         gbatch_rep = dgl.batch([gbatch] * num_repeat)
-        ebatch_rep = None if ebatch is None else torch.stack([ebatch] * num_repeat)
-        env = get_mdp_class(cfg.task)(gbatch_rep, cfg)
+        ebatch_rep = None if ebatch is None else torch.repeat_interleave(ebatch, num_repeat, dim=0)
 
+        env = get_mdp_class(cfg.task)(gbatch_rep, cfg)
         state = env.state
+
         while not all(env.done):
             action = alg.sample(gbatch_rep, state, env.done, cb=ebatch_rep, rand_prob=0.)
             state = env.step(action)
