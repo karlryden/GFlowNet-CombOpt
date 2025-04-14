@@ -137,7 +137,7 @@ class TransitionBuffer(object):
 
         for b_idx in range(batch_size):
             g_bidx = g_list[b_idx]
-            c_bidx = cb[b_idx]
+            c_bidx = None if cb is None else cb[b_idx]
             traj_len_bidx = traj_len[b_idx]
             traj_s_bidx = traj_s_tuple[b_idx][..., :traj_len_bidx]
             traj_a_bidx = traj_a[b_idx, :traj_len_bidx - 1]
