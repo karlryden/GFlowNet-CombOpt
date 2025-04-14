@@ -50,7 +50,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
           f"Top20={np.mean(mis_top20_ls):.2f}, "
           f"LogR={np.mean(logr_ls):.2e}±{np.std(logr_ls):.2e}")
 
-    if cfg.condition:
+    if indicator_fn is not None:
         satisfied = indicator_fn(state)  # Boolean tensor of shape [batch_size]
         satisfaction_rate = satisfied.float().mean().item()
 
