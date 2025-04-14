@@ -160,7 +160,9 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
 
         gb, cb, s, logr, a, s_next, logr_next, d = batch
 
-        if cb and (cb[0] is not None):
+        conditioned = cb and (cb[0] is not None)
+
+        if conditioned:
             assert hasattr(self, "proj"), "Projection not defined, check condition_dim in config."
             self.proj.train()
             cb = cb.to(self.device)
@@ -175,7 +177,7 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
 
-        if cb is None:
+        if not conditioned:
             cb_two = None
         else:
             cb = self.proj(cb)
