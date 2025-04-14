@@ -27,13 +27,23 @@ def main(cfg):
 
         if cfg.eval:
             from eval import evaluate
-            evaluate(cfg, device, test_loader, alg, 0, 0, None, None, None)
+            from util import get_logr_scaler
+
+            logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
+            result = {"set_size": {}, "logr_scaled": {}, "train_step": {}, "train_data_used": {}}
+
+            evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
 
     else:
         assert cfg.eval
         _, test_loader = get_data_loaders(cfg)
         alg, _ = get_alg_buffer(cfg, device)
         alg.load(cfg.eval_model)
-        
+
+        from eval import evaluate
+        from util import get_logr_scaler
+
+        evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
+
 if __name__ == "__main__":
     main()
