@@ -18,17 +18,22 @@ def main(cfg):
         from llm import embed_constraints
         embed_constraints(cfg)
 
-    train_loader, test_loader = get_data_loaders(cfg)
-    alg, buffer = get_alg_buffer(cfg, device)
+    if cfg.eval_model != 'none':
+        train_loader, test_loader = get_data_loaders(cfg)
+        alg, buffer = get_alg_buffer(cfg, device)
 
-    from train import train_loop
-    train_loop(cfg, device, alg, buffer, train_loader, test_loader)
+        from train import train_loop
+        train_loop(cfg, device, alg, buffer, train_loader, test_loader)
 
-    if cfg.eval:
-        from eval import evaluate
-        if cfg.model != 'none':
-            alg.load(cfg.model)
-        evaluate(cfg, device, test_loader, alg, 0, 0, None, None, None)
+        if cfg.eval:
+            from eval import evaluate
+            evaluate(cfg, device, test_loader, alg, 0, 0, None, None, None)
 
+    else:
+        assert cfg.eval
+        _, test_loader = get_data_loaders(cfg)
+        alg, _ = get_alg_buffer(cfg, device)
+        alg.load(cfg.eval_model)
+        
 if __name__ == "__main__":
     main()
