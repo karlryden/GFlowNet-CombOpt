@@ -104,12 +104,12 @@ class GIN(nn.Module):
 
             elif c.ndimension() == 2:   # per-graph (2D) conditioning (batch of graphs)
                 assert c.shape[0] == g.batch_size, "Conditioning signal batch must match graph batch size."
-                assert c.shape[1] == self.hidden_dim, "Conditioning signal dimension must match GNN hidden dimension."
+                assert c.shape[1] == self.hidden_dim, f"Conditioning signal dimension ({c.shape[1]}) must match GNN hidden dimension ({self.hidden_dim})."
                 C = torch.repeat_interleave(
                     c, g.batch_num_nodes(), dim=0
                 )
             else:
-                raise ValueError("Conditioning signal must be either 1D or 2D.")
+                raise ValueError(f"Conditioning signal must be either 1D or 2D but has {c.ndimension()} dimensions.")
 
         h = self.inp_embedding(state)
         h = self.inp_transform(h)
