@@ -33,7 +33,8 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
         state = env.state
 
         while not all(env.done):
-            action = alg.sample(gbatch_rep, state, env.done, cb=alg.proj(ebatch_rep), rand_prob=0.)
+            proj_rep = ebatch if not constbatch else alg.proj(ebatch_rep)
+            action = alg.sample(gbatch_rep, state, env.done, cb=proj_rep, rand_prob=0.)
             state = env.step(action)
 
         logr_rep = logr_scaler(env.get_log_reward())    # unpenalized reward is reported for evaluation

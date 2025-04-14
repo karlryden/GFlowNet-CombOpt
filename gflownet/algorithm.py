@@ -109,7 +109,8 @@ class DetailedBalance(object):
         # state, action, done, reward
         traj_s, traj_r, traj_a, traj_d = [], [], [], []
         while not all(env.done):
-            action = self.sample(gbatch, state, env.done, cb=self.proj(cbatch), rand_prob=cfg.randp)
+            cbatch_proj = cbatch if cbatch is None else self.proj(cbatch)
+            action = self.sample(gbatch, state, env.done, cb=cbatch_proj, rand_prob=cfg.randp)
             traj_s.append(state)
             traj_r.append(env.get_log_reward(penalty=penalty_fn(state)))
             traj_a.append(action)
