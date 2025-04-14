@@ -33,7 +33,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
         state = env.state
 
         while not all(env.done):
-            action = alg.sample(gbatch_rep, state, env.done, cb=ebatch_rep, rand_prob=0.)
+            action = alg.sample(gbatch_rep, state, env.done, cb=alg.proj(ebatch_rep), rand_prob=0.)
             state = env.step(action)
 
         logr_rep = logr_scaler(env.get_log_reward(penalty=penalty_fn(state)))
