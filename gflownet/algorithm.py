@@ -160,7 +160,7 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
 
         gb, cb, s, logr, a, s_next, logr_next, d = batch
 
-        if cb is not None:
+        if cb and (cb[0] is not None):
             assert hasattr(self, "proj"), "Projection not defined, check condition_dim in config."
             self.proj.train()
             cb = cb.to(self.device)
