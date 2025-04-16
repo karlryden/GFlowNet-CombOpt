@@ -1,44 +1,24 @@
-from functools import partial
 import torch
 
-indicators = {  # add custom indicators here
-    'none': lambda s, nodes: torch.tensor([1.0], device=s.device),
-    'inclusion': lambda s, nodes: (s[nodes] == 1).float().all(),
-    'exclusion': lambda s, nodes: (s[nodes] == 0).float().all(),
-}
+def get_sat_fn():
+    def sat_fn(gb, s):
+        want = gb.ndata['wanted'].to(dtype=torch.bool)
+        inc = (s == 1).flatten()
+        sat = inc & want
 
-def get_indicator_fn(signature):
-    constraint_type = signature['type']
-    constrained_nodes = signature['node']
+        cum_num_node = gb.batch_num_nodes().cumsum(dim=0)
+        
+        start = 0
+        sat_rates = torch.empty(gb.batch_size, device=s.device)
 
-    return partial(indicators[constraint_type], nodes=constrained_nodes)
+        for k, end in enumerate(cum_num_node):
+            w = want[start:end]
+            s = sat[start:end]
 
-def batch_indicators(gbatch, ibatch):
-    cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
+            sat_rates[k] = 1.0 if not w.sum() else s.sum() / w.sum()
 
-    def indicator_fn(state):
-        sat = torch.empty(gbatch.batch_size, device=gbatch.device)
+            start = end
 
-        for k, indicator in enumerate(ibatch):
-            start = 0 if k == 0 else cum_num_node[k-1]
-            end = cum_num_node[k]
+        return sat_rates
 
-            sat[k] = indicator(state[start:end])
-
-        return sat
-    
-    return indicator_fn
-
-def get_penalty_fn(cfg, gbatch, critic):
-    def linear_penalty(state):
-        penalty_weight, = cfg.pargs
-        return penalty_weight * gbatch.batch_num_nodes() * critic(state)
-
-    if cfg.penalty == "none":
-        return lambda state: torch.tensor(0., device=gbatch.device)
-    
-    elif cfg.penalty == "linear":
-        return linear_penalty
-
-    else:
-        raise NotImplementedError
+    return sat_fn
