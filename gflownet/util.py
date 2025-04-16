@@ -38,6 +38,8 @@ def refine_cfg(cfg):
 
     return cfg
 
+######### Reward utils
+
 def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
     if reward_exp is None:
         reward_exp = float(cfg.reward_exp)
@@ -56,6 +58,29 @@ def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
         logr = sol_size
         return logr * reward_exp
     return logr_scaler
+
+def get_sat_fn():
+    def sat_fn(gbatch, state):
+        want = gbatch.ndata['wanted'].to(dtype=torch.bool)
+        inc = (state == 1).flatten()
+        sat = inc & want
+
+        cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
+
+        start = 0
+        sat_rates = torch.empty(gbatch.batch_size, device=state.device)
+
+        for k, end in enumerate(cum_num_node):
+            w = want[start:end]
+            s = sat[start:end]
+
+            sat_rates[k] = 1.0 if not w.sum() else s.sum() / w.sum()
+
+            start = end
+
+        return sat_rates
+
+    return sat_fn
 
 ######### Pytorch Utils
 
@@ -99,7 +124,6 @@ def imap_unordered_bar(func, args, n_processes=2):
     p.close()
     p.join()
     return res_list
-
 
 class TransitionBuffer(object):
     def __init__(self, size, cfg):

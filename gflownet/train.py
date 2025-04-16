@@ -4,8 +4,7 @@ import numpy as np
 import torch
 import dgl
 
-from constrain import get_sat_fn
-from util import get_logr_scaler
+from util import get_logr_scaler, get_sat_fn
 from eval import evaluate
 
 def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
@@ -23,8 +22,8 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             gbatch = gbatch.to(device)
             if constbatch:
                 cbatch = [const['constraint'] for const in constbatch]
-                ebatch = torch.stack([const['embedding'] for const in constbatch])
-                # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
+                # ebatch = torch.stack([const['embedding'] for const in constbatch])
+                ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
                 sat_fn = get_sat_fn()
             else:
                 cbatch, ebatch, sat_fn = None, None, None
