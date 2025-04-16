@@ -20,9 +20,9 @@ def read_dgl_from_graph(graph_path):
         _g = pickle.load(graph_file)
     labelled = "optimal" in graph_path.name or "non-optimal" in graph_path.name
     if labelled:
-        g = dgl.from_networkx(_g, node_attrs=['label'])
+        g = dgl.from_networkx(_g, node_attrs=['label', 'wanted'])
     else:
-        g = dgl.from_networkx(_g)
+        g = dgl.from_networkx(_g, node_attrs=['wanted'])
     return g
 
 class GraphDataset(Dataset):
@@ -46,9 +46,8 @@ class GraphDataset(Dataset):
             pt = torch.load(self.constraint_paths[idx])
             c = pt['constraint']
             e = pt['embedding']
-            s = pt['signature']
 
-            return g, {'constraint': c, 'embedding': e, 'signature': s}
+            return g, {'constraint': c, 'embedding': e}
 
         else:
             return g, None
@@ -102,7 +101,6 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
             g = x['graph']
             c = None if 'constraint' not in x.keys() else x['constraint']
             e = None if 'embedding' not in x.keys() else x['embedding'].cpu()
-            s = None if 'signature' not in x.keys() else x['signature']
 
     except Exception as e:
         print(f"Failed to read {source_instance_path}: {e}.")
@@ -118,7 +116,6 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
         torch.save({
             'constraint': c,
             'embedding': e,
-            'signature': s
         }, dest_stem.with_suffix(".pt"))
 
         print(f'Updated constraint: {source_instance_path}.')
