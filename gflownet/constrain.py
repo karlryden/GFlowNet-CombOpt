@@ -1,15 +1,15 @@
 import torch
 
 def get_sat_fn():
-    def sat_fn(gb, s):
-        want = gb.ndata['wanted'].to(dtype=torch.bool)
-        inc = (s == 1).flatten()
+    def sat_fn(gbatch, state):
+        want = gbatch.ndata['wanted'].to(dtype=torch.bool)
+        inc = (state == 1).flatten()
         sat = inc & want
 
-        cum_num_node = gb.batch_num_nodes().cumsum(dim=0)
-        
+        cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
+
         start = 0
-        sat_rates = torch.empty(gb.batch_size, device=s.device)
+        sat_rates = torch.empty(gbatch.batch_size, device=state.device)
 
         for k, end in enumerate(cum_num_node):
             w = want[start:end]
