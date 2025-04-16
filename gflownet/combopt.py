@@ -71,14 +71,19 @@ class GraphCombOptMDP(object):
 
         raise NotImplementedError
 
-    def get_log_reward(self, state=None, penalty=torch.tensor(0.)):
+    def get_log_reward(self, state=None, critic=None):
         if state is None:
             state = self.state.clone()
 
         padded_state = pad_batch(state, self.numnode_per_graph, padding_value=2)
 
-        return -self.energy_fn(padded_state) + penalty.to(padded_state.device)
-        
+        E = self.energy_fn(padded_state)
+        if critic is not None:
+            pc = self.cfg.penalty_coef
+            E = E * (1 - pc * critic(self.gbatch, state))
+
+        return -E
+
     def energy_fn(self, state):
         # Problem-specific energy function implemented as in the appendix
 
@@ -118,7 +123,7 @@ class MaxIndSetMDP(GraphCombOptMDP):
             x1_deg = self.gbatch.ndata.pop('h')  # (#node, # of 1-labeled neighbour node)
         undecided = ~get_decided(state)
         state[undecided & (x1_deg > 0)] = 0
-        
+
         return state
 
     def energy_fn(self, state):
@@ -165,9 +170,9 @@ class MinDominateSetMDP(GraphCombOptMDP):
         # assert torch.all(state[action_node_idx] == 2)
         assert torch.all(~self.get_decided_mask(state[action_node_idx]))
         state[action_node_idx] = 0
-        
+
         state = self._prune(state)
-        
+
         self.set_state(state)
 
         return state

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import dgl
 
-from constrain import get_indicator_fn, batch_indicators, get_penalty_fn
+from constrain import get_sat_fn
 from util import get_logr_scaler
 from eval import evaluate
 
@@ -24,12 +24,11 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             if constbatch:
                 cbatch = [const['constraint'] for const in constbatch]
                 ebatch = torch.stack([const['embedding'] for const in constbatch])
-                ibatch = [get_indicator_fn(const['signature']) for const in constbatch]
-                indicator_fn = batch_indicators(gbatch, ibatch)
+                # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
+                sat_fn = get_sat_fn()
             else:
-                cbatch, ebatch, indicator_fn = None, None, None
+                cbatch, ebatch, sat_fn = None, None, None
 
-            penalty_fn = get_penalty_fn(cfg, gbatch, indicator_fn) if indicator_fn else None
             process_ratio = max(0., min(1., train_data_used / cfg.annend))
             logr_scaler = get_logr_scaler(cfg, process_ratio)
 
@@ -38,7 +37,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             train_data_used += gbatch.batch_size
 
             # rollout
-            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=ebatch, penalty_fn=penalty_fn)
+            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=ebatch, critic=sat_fn)
             buffer.add_batch(batch)
             logr = logr_scaler(batch[-2][:, -1])
             train_logr_scaled_ls += logr.tolist()
