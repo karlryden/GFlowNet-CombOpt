@@ -15,7 +15,7 @@ python rbgraph_generator.py --num_graph 500 --graph_type small --save_dir rb200-
 add --constrain to generate softly constrained graphs
 """
 
-# TODO: Add more templates using
+# TODO: Add more templates
 constraint_templates = lambda w: [
     "inclusion constraint on nodes " + ", ".join(map(str, w)),
 ]
@@ -53,32 +53,33 @@ if __name__ == '__main__':
             if min_n <= g.number_of_nodes() <= max_n:
                 break
 
-        x = {
-            'graph': g,
-        }
+        x = {}
+        wanted = []
 
         if args.constrain:
             # TODO: Implement and train a 'critic' to skip indicators
+
             constrain = np.random.binomial(1, args.constrain) # Randomly choose whether to add a constraint or not
 
             if constrain:
-                num_wanted = g.number_of_nodes() // 10
+                num_wanted = max(1, g.number_of_nodes() // 10)
                 wanted = np.random.choice(   # Pick a small-ish number of preferred nodes
                     g.number_of_nodes(),
                     size=num_wanted,
                     replace=False
                 ).tolist()
 
-                constraint = np.random.choice(  # Generate a random constraint string
+                c = np.random.choice(  # Generate a random constraint string
                     constraint_templates(wanted)
                 )
 
             else:
-                wanted = []    
-                constraint = ""
+                c = ""
+        
+            x['constraint'] = c
 
-            x['constraint'] = constraint
-            x['wanted'] = wanted
+        nx.set_node_attributes(g, {i: float(i in wanted) for i in range(len(g))}, 'wanted')
+        x['graph'] = g
 
         output_file = path / (f'{stub}.pickle')
 
