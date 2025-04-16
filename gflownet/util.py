@@ -8,7 +8,6 @@ import dgl
 
 def refine_cfg(cfg):
     with open_dict(cfg):
-        cfg.device = cfg.d
         cfg.work_directory = os.getcwd()
 
         if cfg.task in ["mis", "maxindset", "maxindependentset",]:
@@ -29,22 +28,7 @@ def refine_cfg(cfg):
         # architecture
         assert cfg.arch in ["gin"]
 
-        # log reward shape
-        cfg.reward_exp = cfg.rexp
-        cfg.reward_exp_init = cfg.rexpit
-        if cfg.anneal in ["lin"]:
-            cfg.anneal = "linear"
-        if cfg.penalty in ["lin"]:
-            cfg.penalty = "linear"
-
-        # training
-        cfg.batch_size = cfg.bs
-        cfg.batch_size_interact = cfg.bsit
-        cfg.leaf_coef = cfg.lc
-        cfg.same_graph_across_batch = cfg.sameg
-
         # data
-        cfg.test_batch_size = cfg.tbs
         if "rb" in cfg.input:
             cfg.data_type = cfg.input.upper()
         elif "ba" in cfg.input:
@@ -52,7 +36,6 @@ def refine_cfg(cfg):
         else:
             raise NotImplementedError
 
-    del cfg.d, cfg.rexp, cfg.rexpit, cfg.bs, cfg.bsit, cfg.lc, cfg.sameg, cfg.tbs
     return cfg
 
 def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
@@ -161,8 +144,8 @@ class TransitionBuffer(object):
             zip(*transition_ls)  # s_batch is a list of tensors
         gbatch = dgl.batch(gbatch)
 
-        if cbatch and (cbatch[0] is not None):
-            cbatch = torch.stack(cbatch, dim=0)
+        conditioned = cbatch and (cbatch[0] is not None and isinstance(cbatch[0], torch.Tensor))
+        cbatch = None if not conditioned else torch.stack(cbatch, dim=0)
         s_batch = torch.cat(s_batch, dim=0)  # (sum of # nodes in batch, )
         s_next_batch = torch.cat(s_next_batch, dim=0)
 
