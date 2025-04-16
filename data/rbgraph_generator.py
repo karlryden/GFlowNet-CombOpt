@@ -1,14 +1,9 @@
-import os
-import sys
+import os, sys
 import pickle
-import random
 import numpy as np
-import shutil
 from pathlib import Path
-import json
 import argparse
 from tqdm import tqdm
-import multiprocessing
 import networkx as nx
 
 from xu_util import get_random_instance
@@ -16,8 +11,14 @@ from xu_util import get_random_instance
 """
 python rbgraph_generator.py --num_graph 4000 --graph_type small --save_dir rb200-300/train
 python rbgraph_generator.py --num_graph 500 --graph_type small --save_dir rb200-300/test  
+
+add --constrain to generate softly constrained graphs
 """
 
+# TODO: Add more templates using
+constraint_templates = lambda w: [
+    "inclusion constraint on nodes " + ", ".join(map(str, w)),
+]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -25,7 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--graph_type', type=str, default='small')
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument("--save_dir", type=str, default="data")
-    parser.add_argument("--constrain", action="store_true")
+    parser.add_argument("--constrain", type=float, default=0.0)
     args = parser.parse_args()
     np.random.seed(seed=args.seed)
 
@@ -41,6 +42,8 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
+    assert 0 <= args.constrain <= 1, "constrain should be between 0 and 1."
+
     for i, num_g in enumerate(tqdm(range(args.num_graph))):
         path = Path(f'{args.save_dir}')
         stub = f"GR_{min_n}_{max_n}_{num_g}"
@@ -54,35 +57,31 @@ if __name__ == '__main__':
             'graph': g,
         }
 
-        if args.constrain:  # NOTE: Should unconstrained examples also be generated? 
+        if args.constrain:
             # TODO: Implement and train a 'critic' to skip indicators
-            constraint_type = np.random.choice(['none', 'inclusion', 'exclusion']) # Randomly choose the constraint type
+            constrain = np.random.binomial(1, args.constrain) # Randomly choose whether to add a constraint or not
 
-            if constraint_type != 'none':
-                constrained_nodes = np.random.choice(   # Pick U[|V|//4, |V|//2] nodes to constrain
-                    g.number_of_nodes(), 
-                    size=g.number_of_nodes() // 4 + np.random.choice(g.number_of_nodes() // 4), 
+            if constrain:
+                num_wanted = g.number_of_nodes() // 10
+                wanted = np.random.choice(   # Pick a small-ish number of preferred nodes
+                    g.number_of_nodes(),
+                    size=num_wanted,
                     replace=False
                 ).tolist()
-                # TODO: Call LLM-API(type, node; g) here
-                constraint = constraint_type + " constraint on node"
-                constraint += "s " if len(constrained_nodes) > 1 else " "
-                constraint += ", ".join(map(str, constrained_nodes))   
+
+                constraint = np.random.choice(  # Generate a random constraint string
+                    constraint_templates(wanted)
+                )
 
             else:
-                constrained_nodes = []    
+                wanted = []    
                 constraint = ""
 
-
             x['constraint'] = constraint
-            x['signature'] = {
-                    'type': constraint_type,
-                    'node': constrained_nodes
-                }
+            x['wanted'] = wanted
 
         output_file = path / (f'{stub}.pickle')
 
         with open(output_file, 'wb') as f:
             pickle.dump(x, f, pickle.HIGHEST_PROTOCOL)
         print(f"Generated graph {path}")
-
