@@ -15,9 +15,17 @@ python rbgraph_generator.py --num_graph 500 --graph_type small --save_dir rb200-
 add --constrain to generate softly constrained graphs
 """
 
-# TODO: Add more templates
 constraint_templates = lambda w: [
     "inclusion constraint on nodes " + ", ".join(map(str, w)),
+    "prefer to include nodes " + ", ".join(map(str, w)),
+    "favor selecting nodes " + ", ".join(map(str, w)),
+    "encourage inclusion of nodes " + ", ".join(map(str, w)),
+    "try to select nodes " + ", ".join(map(str, w)),
+    "guide solution toward including nodes " + ", ".join(map(str, w)),
+    "selection should prioritize nodes " + ", ".join(map(str, w)),
+    "soft requirement: include nodes " + ", ".join(map(str, w)),
+    "suggested inclusion: nodes " + ", ".join(map(str, w)),
+    "aim to include nodes " + ", ".join(map(str, w)),
 ]
 
 if __name__ == '__main__':
@@ -57,10 +65,7 @@ if __name__ == '__main__':
         wanted = []
 
         if args.constrain:
-            # TODO: Implement and train a 'critic' to skip indicators
-
             constrain = np.random.binomial(1, args.constrain) # Randomly choose whether to add a constraint or not
-
             if constrain:
                 num_wanted = max(1, g.number_of_nodes() // 10)
                 wanted = np.random.choice(   # Pick a small-ish number of preferred nodes
@@ -75,9 +80,10 @@ if __name__ == '__main__':
 
             else:
                 c = ""
-        
+
             x['constraint'] = c
 
+        # TODO: Implement and train a network to predict w = critic(g, c)
         nx.set_node_attributes(g, {i: float(i in wanted) for i in range(len(g))}, 'wanted')
         x['graph'] = g
 
