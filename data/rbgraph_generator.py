@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 from tqdm import tqdm
 import networkx as nx
+from networkx.algorithms import approximation
 
 from xu_util import get_random_instance
 
@@ -12,8 +13,21 @@ from xu_util import get_random_instance
 python rbgraph_generator.py --num_graph 4000 --graph_type small --save_dir rb200-300/train
 python rbgraph_generator.py --num_graph 500 --graph_type small --save_dir rb200-300/test  
 
-add --constrain to generate softly constrained graphs
+add --constrain to generate softly constrained graphs,
+and --approx to generate nx-approximations to all tasks.    # NOTE: SLOW
 """
+
+tasks = ['MaxIndependentSet', 'MaxClique', 'MinDominateSet', 'MaxCut']
+
+approximator_dict = {
+    'MaxIndependentSet': approximation.maximum_independent_set,
+    'MaxClique': approximation.max_clique,
+    'MinDominateSet': approximation.min_weighted_dominating_set,
+    'MaxCut': lambda g: approximation.one_exchange(g)[1][0],
+}
+
+def approximate_solution(g, task='MaxIndependentSet'):
+    return approximator_dict[task](g)
 
 constraint_templates = lambda w: [
     "inclusion constraint on nodes " + ", ".join(map(str, w)),
@@ -35,6 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument("--save_dir", type=str, default="data")
     parser.add_argument("--constrain", type=float, default=0.0)
+    parser.add_argument("--approx", action="store_true", default=False)
     args = parser.parse_args()
     np.random.seed(seed=args.seed)
 
@@ -60,6 +75,13 @@ if __name__ == '__main__':
             g.remove_nodes_from(list(nx.isolates(g)))
             if min_n <= g.number_of_nodes() <= max_n:
                 break
+
+        if args.approx:
+            for task in tasks:
+                print("Approximating solution for task:", task)
+                s = approximate_solution(g, task)
+                node_attr = {i: float(i in s) for i in g.nodes}
+                nx.set_node_attributes(g, node_attr, task)
 
         x = {}
         wanted = []
