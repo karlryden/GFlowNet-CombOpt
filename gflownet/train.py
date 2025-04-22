@@ -15,7 +15,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
     metric_best = 0.
     alg_save_path = os.path.abspath("./alg.pt")
     alg_save_path_best = os.path.abspath("./alg_best.pt")
-    result = {"set_size": {}, "logr_scaled": {}, "train_data_used": {}, "train_step": {}}
+    result = {"set_size": {}, "logr_scaled": {}, "sat_rate": {}, "train_data_used": {}, "train_step": {}}
 
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):

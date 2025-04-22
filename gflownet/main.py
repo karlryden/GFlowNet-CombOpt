@@ -30,7 +30,7 @@ def main(cfg):
             from util import get_logr_scaler
 
             logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
-            result = {"set_size": {}, "logr_scaled": {}, "train_step": {}, "train_data_used": {}}
+            result = {"set_size": {}, "logr_scaled": {}, "sat_rate": {}, "train_step": {}, "train_data_used": {}}
 
             evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
 
