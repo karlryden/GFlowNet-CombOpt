@@ -63,7 +63,6 @@ def embed_constraints(cfg):
 
     print("Collecting constraints...")
     for f in pickles:
-
         with open(f, 'rb') as p:
             x = pickle.load(p)
             assert 'constraint' in x.keys(), f"Missing constraint in {f}."
@@ -71,10 +70,10 @@ def embed_constraints(cfg):
                 files.append(f)
                 consts.append(x['constraint'])
 
-    tokenizer = get_tokenizer(cfg.llm)
-    llm = get_llm(cfg.llm)
-
     if consts:
+        tokenizer = get_tokenizer(cfg.llm)
+        llm = get_llm(cfg.llm)
+
         print(f"Embedding {len(consts)} constraints in batches...")
         for i in tqdm(range(0, len(consts), cfg.llm_batch_size)):
             cbatch = consts[i:i+cfg.llm_batch_size]
@@ -90,11 +89,12 @@ def embed_constraints(cfg):
 
                 with open(f, 'wb') as p:
                     pickle.dump(x, p, pickle.HIGHEST_PROTOCOL)
+
+        del tokenizer
+        del llm
+
     else:
         print("All constraints already embedded.")
 
-    del tokenizer
-    del llm
-    
     torch.cuda.empty_cache()
     gc.collect()

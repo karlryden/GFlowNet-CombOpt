@@ -110,15 +110,12 @@ def _prepare_instance(source_instance_path: pathlib.Path, cache_directory: pathl
 
     with open(dest_stem.with_suffix(".graph"), 'wb') as graph_file:
         pickle.dump(g, graph_file, pickle.HIGHEST_PROTOCOL)
-    print(f"Updated graph file: {source_instance_path}.")
 
     if c is not None:
         torch.save({
             'constraint': c,
             'embedding': e,
         }, dest_stem.with_suffix(".pt"))
-
-        print(f'Updated constraint: {source_instance_path}.')
 
 def collate_fn(samples):
     graphs = [x[0] for x in samples]
