@@ -1,9 +1,11 @@
 import os, sys
-import pickle
-import numpy as np
-from pathlib import Path
 import argparse
+import pickle
+from pathlib import Path
+
 from tqdm import tqdm
+
+import numpy as np
 import networkx as nx
 from networkx.algorithms import approximation
 
@@ -14,20 +16,7 @@ python rbgraph_generator.py --num_graph 4000 --graph_type small --save_dir rb200
 python rbgraph_generator.py --num_graph 500 --graph_type small --save_dir rb200-300/test  
 
 add --constrain to generate softly constrained graphs,
-and --approx to generate nx-approximations to all tasks.    # NOTE: SLOW
 """
-
-tasks = ['MaxIndependentSet', 'MaxClique', 'MinDominateSet', 'MaxCut']
-
-approximator_dict = {
-    'MaxIndependentSet': approximation.maximum_independent_set,
-    'MaxClique': approximation.max_clique,
-    'MinDominateSet': approximation.min_weighted_dominating_set,
-    'MaxCut': lambda g: approximation.one_exchange(g)[1][0],
-}
-
-def approximate_solution(g, task='MaxIndependentSet'):
-    return approximator_dict[task](g)
 
 constraint_templates = lambda w: [
     "inclusion constraint on nodes " + ", ".join(map(str, w)),
@@ -49,7 +38,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument("--save_dir", type=str, default="data")
     parser.add_argument("--constrain", type=float, default=0.0)
-    parser.add_argument("--approx", action="store_true", default=False)
+    parser.add_argument("--want", type=float, default=0.1)
     args = parser.parse_args()
     np.random.seed(seed=args.seed)
 
@@ -66,6 +55,7 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     assert 0 <= args.constrain <= 1, "constrain should be between 0 and 1."
+    assert 0 <= args.want <= 1, "want should be between 0 and 1."
 
     for i, num_g in enumerate(tqdm(range(args.num_graph))):
         path = Path(f'{args.save_dir}')
@@ -76,20 +66,13 @@ if __name__ == '__main__':
             if min_n <= g.number_of_nodes() <= max_n:
                 break
 
-        if args.approx:
-            for task in tasks:
-                print("Approximating solution for task:", task)
-                s = approximate_solution(g, task)
-                node_attr = {i: float(i in s) for i in g.nodes}
-                nx.set_node_attributes(g, node_attr, task)
-
         x = {}
         wanted = []
 
         if args.constrain:
             constrain = np.random.binomial(1, args.constrain) # Randomly choose whether to add a constraint or not
             if constrain:
-                num_wanted = max(1, g.number_of_nodes() // 10)
+                num_wanted = np.ceil(g.number_of_nodes() * args.want)  # Number of nodes to be preferred
                 wanted = np.random.choice(   # Pick a small-ish number of preferred nodes
                     g.number_of_nodes(),
                     size=num_wanted,
