@@ -80,7 +80,9 @@ class GraphCombOptMDP(object):
         E = self.energy_fn(padded_state)
         if critic is not None:
             pc = self.cfg.penalty_coef
-            E = E * (1 - pc * critic(self.gbatch, state))
+            score = critic(self.gbatch, state)
+
+            E = E * (1 - pc * score)
 
         return -E
 

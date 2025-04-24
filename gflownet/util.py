@@ -61,9 +61,13 @@ def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
 
 def get_sat_fn():
     def sat_fn(gbatch, state):
+        dec = ~(state == 2)      # decided
+        inc = (state == 1)      # included
+
         want = gbatch.ndata['wanted'].to(dtype=torch.bool)
-        inc = (state == 1).flatten()
-        sat = inc & want
+
+        liable = dec & want     # liable to be penalized
+        sat = want & inc        # satisfied
 
         cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
 
@@ -71,7 +75,7 @@ def get_sat_fn():
         sat_rates = torch.empty(gbatch.batch_size, device=state.device)
 
         for k, end in enumerate(cum_num_node):
-            w = want[start:end]
+            w = liable[start:end]
             s = sat[start:end]
 
             sat_rates[k] = 1.0 if not w.sum() else s.sum() / w.sum()
