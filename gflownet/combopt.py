@@ -82,7 +82,7 @@ class GraphCombOptMDP(object):
             pc = self.cfg.penalty_coef
             score = critic(self.gbatch, state)
 
-            E = E * (1 - pc * score)
+            E = E * (1 - pc * (1 - score))
 
         return -E
 
@@ -91,8 +91,11 @@ class GraphCombOptMDP(object):
 
         raise NotImplementedError
 
-    def batch_metric(self, state): # return a list of metric
-        return self.get_log_reward(state).tolist()
+    def batch_metric(self, state=None, critic=None): # return a list of metric
+        if state is None:
+            state = self.state.clone()
+
+        return self.get_log_reward(state, critic).tolist()
 
     def get_decided_mask(self, state=None):
         state = self.state if state is None else state
