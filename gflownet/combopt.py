@@ -82,7 +82,7 @@ class GraphCombOptMDP(object):
             pc = self.cfg.penalty_coef
             score = critic(self.gbatch, state)
 
-            E = E * (1 - pc * (1 - score))
+            E = E - pc*score*torch.abs(E)
 
         return -E
 
