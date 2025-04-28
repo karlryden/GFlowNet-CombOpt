@@ -72,7 +72,7 @@ if __name__ == '__main__':
         if args.constrain:
             constrain = np.random.binomial(1, args.constrain) # Randomly choose whether to add a constraint or not
             if constrain:
-                num_wanted = int(np.ceil(g.number_of_nodes() * args.want))  # Number of nodes to be preferred
+                num_wanted = int(max(1, g.number_of_nodes() * args.want))  # Number of nodes to be preferred
                 wanted = np.random.choice(   # Pick a small-ish number of preferred nodes
                     g.number_of_nodes(),
                     size=num_wanted,
