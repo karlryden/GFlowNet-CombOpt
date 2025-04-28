@@ -7,6 +7,16 @@ from einops import rearrange
 from util import get_sat_fn
 from combopt import get_mdp_class
 
+def batch_jaccard(S):
+    A = S.unsqueeze(1)
+    B = S.unsqueeze(0)
+
+    cap = torch.logical_and(A, B).float().sum(dim=2)
+    cup = torch.logical_or(A, B).float().sum(dim=2).clamp(min=1)
+    tril_mask = torch.tril(torch.ones(len(S), len(S), dtype=torch.bool, device=S.device), diagonal=-1)
+
+    return (cap[tril_mask] / cup[tril_mask]).mean().item()
+
 @torch.no_grad()
 def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_scaler, result, ep):
     torch.cuda.empty_cache()
@@ -35,7 +45,13 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             action = alg.sample(gbatch_rep, state, env.done, cb=proj_rep, rand_prob=0.)
             state = env.step(action)
 
-        logr_rep = logr_scaler(env.get_log_reward())    # unpenalized reward is reported for evaluation
+        splits = state.split(env.numnode_per_graph)
+        reps = [torch.stack(
+            splits[i::gbatch.batch_size]
+            ) for i in range(gbatch.batch_size)]
+        jaccard_rep = [batch_jaccard(rep) for rep in reps]
+
+        logr_rep = logr_scaler(env.get_log_reward(critic=sat_fn))    # unpenalized reward is reported for evaluation
         logr_ls += logr_rep.tolist()
         curr_mis_rep = torch.tensor(env.batch_metric(state))
         curr_mis_rep = rearrange(curr_mis_rep, "(rep b) -> b rep", rep=num_repeat).float()
@@ -57,6 +73,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
     print(f"[Eval] Epoch {ep}: ",
           f"Metric={np.mean(mis_ls):.2f}±{np.std(mis_ls):.2f}, "
           f"Top20={np.mean(mis_top20_ls):.2f}, ",
+          f"Jaccard={np.mean(jaccard_rep):.2f}±{np.std(jaccard_rep):.2f}, ",
           f"SatRate={np.mean(sat_ls):.2f}±{np.std(sat_ls):.2f}, ",
           f"LogR={np.mean(logr_ls):.2e}±{np.std(logr_ls):.2e}")
 
