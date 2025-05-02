@@ -46,11 +46,19 @@ def get_last_hidden_layer(prompts, tokenizer, model):
         sum_mask = input_mask_expanded.sum(dim=1)
         return sum_embeddings / sum_mask
 
+    def last_non_padding_token(hidden_states, attention_mask):
+        seq_lens = attention_mask.sum(dim=1)
+        batch_size, _, hidden_dim = hidden_states.shape
+        idx = (seq_lens - 1).unsqueeze(1).unsqueeze(2).expand(batch_size, 1, hidden_dim)
+
+        return hidden_states.gather(1, idx).squeeze(1)
+
     with torch.no_grad():
         outputs = model(**inputs, output_hidden_states=True)
         last_hidden = outputs.hidden_states[-1]
 
-    return mean_pool(last_hidden, inputs["attention_mask"])
+    # return mean_pool(last_hidden, inputs["attention_mask"])
+    return last_non_padding_token(last_hidden, inputs["attention_mask"])
 
 def embed_constraints(cfg):
     data_path = Path(__file__).parent.parent / "data"
