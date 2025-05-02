@@ -11,7 +11,10 @@ From Erdos goes neural paper
 """
 
 def get_random_instance(size="small"):
-    if size == "small":
+    if size == "tiny":
+        na = np.random.randint(5, 10)
+        k = np.random.randint(2, 5)
+    elif size == "small":
         na = np.random.randint(20, 25)
         k = np.random.randint(5, 12)
     elif size == "large":

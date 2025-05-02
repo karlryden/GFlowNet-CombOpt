@@ -47,7 +47,9 @@ if __name__ == '__main__':
     print("Final Output: {}".format(args.save_dir))
     print("Generating graphs...")
 
-    if args.graph_type == "small":
+    if args.graph_type == "tiny":
+        min_n, max_n = 10, 20
+    elif args.graph_type == "small":
         min_n, max_n = 200, 300
     elif args.graph_type == "large":
         min_n, max_n = 800, 1200
