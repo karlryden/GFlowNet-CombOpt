@@ -82,7 +82,8 @@ class GraphCombOptMDP(object):
             pc = self.cfg.penalty_coef
             score = critic(self.gbatch, state)
 
-            E = E - pc*score*torch.abs(E)
+            # reward (penalize energy) states with high score, in terms of |V|
+            E = E - pc*score*self.gbatch.batch_num_nodes().float()
 
         return -E
 
