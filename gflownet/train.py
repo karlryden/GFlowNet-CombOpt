@@ -20,13 +20,13 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
             gbatch = gbatch.to(device)
+            cbatch, ebatch, sat_fn = None, None, None
             if constbatch:
-                cbatch = [const['constraint'] for const in constbatch]
-                ebatch = torch.stack([const['embedding'] for const in constbatch])
-                # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
                 sat_fn = get_sat_fn()
-            else:
-                cbatch, ebatch, sat_fn = None, None, None
+                if alg.conditioned:
+                    cbatch = [const['constraint'] for const in constbatch]
+                    ebatch = torch.stack([const['embedding'] for const in constbatch])
+                    # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
 
             process_ratio = max(0., min(1., train_data_used / cfg.annend))
             logr_scaler = get_logr_scaler(cfg, process_ratio)

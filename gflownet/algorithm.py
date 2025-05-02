@@ -43,8 +43,12 @@ class DetailedBalance(object):
                     "aggregator_type": cfg.aggr, "modulation_type": cfg.condition}
         self.model = GIN(3, 1, graph_level_output=0, **gin_dict).to(device)
         self.model_flow = GIN(3, 0, graph_level_output=1, **gin_dict).to(device)
-        if cfg.condition_dim > 0:
-            assert cfg.condition != 'none', "Conditioning method not provided."
+
+        if cfg.condition != 'none': assert cfg.condition_dim > 0, "Conditioning dimension should be greater than 0 -- check config."
+        if cfg.condition_dim > 0: assert cfg.condition != 'none', "Conditioning method not defined -- check config."
+
+        self.conditioned = (cfg.condition_dim > 0) and (cfg.condition != 'none')
+        if self.conditioned:
             self.proj = nn.Linear(cfg.condition_dim, cfg.hidden_dim)
             self.proj = self.proj.to(self.device)
 
@@ -95,18 +99,19 @@ class DetailedBalance(object):
             cbatch: torch.Tensor=None, 
             critic=None
         ):
-        if cfg.condition_dim > 0:
-            assert cbatch is not None, "Conditioning signal is not provided."
-            cbatch = cbatch.to(self.device)
-
         env = get_mdp_class(cfg.task)(gbatch, cfg)
         state = env.state
+
+        if cbatch is not None:
+            cbatch = cbatch.to(self.device)
+            cbatch_proj = self.proj(cbatch)
+        else:
+            cbatch_proj = None
 
         ##### sample traj
         # state, action, done, reward
         traj_s, traj_r, traj_a, traj_d = [], [], [], []
         while not all(env.done):
-            cbatch_proj = cbatch if cbatch is None else self.proj(cbatch)
             action = self.sample(gbatch, state, env.done, cb=cbatch_proj, rand_prob=cfg.randp)
             traj_s.append(state)
             traj_r.append(env.get_log_reward(critic=critic))
@@ -154,13 +159,16 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
     def train_step(self, *batch, logr_scaler=None):
         self.model.train()
         self.model_flow.train()
+        if self.conditioned:
+            self.proj.train()
 
         gb, cb, s, logr, a, s_next, logr_next, d = batch
 
         if cb is not None:
-            assert hasattr(self, "proj"), "Projection not defined, check condition_dim in config."
-            self.proj.train()
             cb = cb.to(self.device)
+            cb_proj = self.proj(cb)
+        else:
+            cb_proj = None
 
         gb, s, logr, a, s_next, logr_next, d = gb.to(self.device), s.to(self.device), logr.to(self.device), \
                     a.to(self.device), s_next.to(self.device), logr_next.to(self.device), d.to(self.device)
@@ -171,10 +179,10 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
-        cb_two = None if cb is None else torch.repeat_interleave(self.proj(cb), repeats=2, dim=0)
+        cb_proj_two = None if cb_proj is None else torch.repeat_interleave(cb_proj, repeats=2, dim=0)
 
-        logits = self.model(gb_two, s_two, c=cb_two)
-        _, flows_out = self.model_flow(gb_two, s_two, c=cb_two) # (2 * num_graphs, 1)
+        logits = self.model(gb_two, s_two, c=cb_proj_two)
+        _, flows_out = self.model_flow(gb_two, s_two, c=cb_proj_two) # (2 * num_graphs, 1)
         flows, flows_next = flows_out[:batch_size, 0], flows_out[batch_size:, 0]
 
         pf_logits = logits[:total_num_nodes, ..., 0]

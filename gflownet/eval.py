@@ -26,25 +26,29 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
     pbar = tqdm(enumerate(test_loader), desc=f"Test Epoch {ep}")
     for batch_idx, (gbatch, constbatch) in pbar:
         gbatch = gbatch.to(device)
+        cbatch, ebatch, sat_fn = None, None, None
         if constbatch:
-            cbatch = [const['constraint'] for const in constbatch]
-            ebatch = torch.stack([c['embedding'] for c in constbatch]).to(device)
-            # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device) # NOTE: For testing
             sat_fn = get_sat_fn()
-        else:
-            cbatch, ebatch, sat_fn = None, None, None
+            if alg.conditioned:
+                cbatch = [const['constraint'] for const in constbatch]
+                ebatch = torch.stack([const['embedding'] for const in constbatch])
+                # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
 
         gbatch_rep = dgl.batch([gbatch] * num_repeat)
-        ebatch_rep = None if ebatch is None else torch.repeat_interleave(ebatch, num_repeat, dim=0)
+        if ebatch is not None:
+            ebatch_proj = alg.proj(ebatch)
+            ebatch_proj_rep = torch.repeat_interleave(ebatch_proj, num_repeat, dim=0)
+        else:
+            ebatch_proj_rep = None
 
         env = get_mdp_class(cfg.task)(gbatch_rep, cfg)
         state = env.state
 
         while not all(env.done):
-            proj_rep = ebatch if not constbatch else alg.proj(ebatch_rep)
-            action = alg.sample(gbatch_rep, state, env.done, cb=proj_rep, rand_prob=0.)
+            action = alg.sample(gbatch_rep, state, env.done, cb=ebatch_proj_rep, rand_prob=0.)
             state = env.step(action)
 
+        #### report Jaccard similarity between solutions: https://en.wikipedia.org/wiki/Jaccard_index
         splits = state.split(env.numnode_per_graph)
         reps = [torch.stack(
             splits[i::gbatch.batch_size]
