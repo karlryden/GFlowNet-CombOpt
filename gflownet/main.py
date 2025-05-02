@@ -32,7 +32,7 @@ def main(cfg):
             logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
             result = {"set_size": {}, "logr_scaled": {}, "sat_rate": {}, "train_step": {}, "train_data_used": {}}
 
-            evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
+            evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=cfg.epochs)
 
     else:
         assert cfg.eval
