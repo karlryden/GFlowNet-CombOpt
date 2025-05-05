@@ -35,15 +35,16 @@ constraint_templates = lambda w: [
 #### Generates sinusoidal positional encodings for the nodes in the graph (Vaswani et al., 2017)
 def sinusoidal_embedding(num_nodes, dim=16):
     half_dim = dim // 2
-
-    emb = np.log(10000.0) / (half_dim - 1)
-    emb = np.exp(np.arange(half_dim) * -emb)
     positions = np.arange(num_nodes)[:, None]
-    emb = positions * emb[None, :]
-    emb[:, 0::2] = np.sin(emb[:, 0::2])
-    emb[:, 1::2] = np.cos(emb[:, 1::2])
 
-    return emb
+    div_term = np.exp(np.arange(half_dim) * -(np.log(10000.0) / half_dim))
+    angle_rads = positions * div_term
+
+    pe = np.zeros((num_nodes, dim))
+    pe[:, 0::2] = np.sin(angle_rads)
+    pe[:, 1::2] = np.cos(angle_rads)
+
+    return pe
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
