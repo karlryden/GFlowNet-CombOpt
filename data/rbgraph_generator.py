@@ -31,6 +31,20 @@ constraint_templates = lambda w: [
     "aim to include nodes " + ", ".join(map(str, w)),
 ]
 
+
+#### Generates sinusoidal positional encodings for the nodes in the graph (Vaswani et al., 2017)
+def sinusoidal_embedding(num_nodes, dim=16):
+    half_dim = dim // 2
+
+    emb = np.log(10000.0) / (half_dim - 1)
+    emb = np.exp(np.arange(half_dim) * -emb)
+    positions = np.arange(num_nodes)[:, None]
+    emb = positions * emb[None, :]
+    emb[:, 0::2] = np.sin(emb[:, 0::2])
+    emb[:, 1::2] = np.cos(emb[:, 1::2])
+
+    return emb
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_graph', type=int, default=10)
@@ -39,13 +53,16 @@ if __name__ == '__main__':
     parser.add_argument("--save_dir", type=str, default="data")
     parser.add_argument("--constrain", type=float, default=0.0)
     parser.add_argument("--want", type=float, default=0.1)
+    parser.add_argument("--encode", action="store_true", default=False)
     args = parser.parse_args()
     np.random.seed(seed=args.seed)
 
     if not os.path.isdir("{}".format(args.save_dir)):
         os.makedirs("{}".format(args.save_dir))
     print("Final Output: {}".format(args.save_dir))
-    print("Generating graphs...")
+    print(f"Generating {args.num_graph} {args.graph_type} graphs \
+        with {int(100*args.constrain)}% chance \
+        of preferring {int(100*args.want)}% of nodes.")
 
     if args.graph_type == "tiny":
         min_n, max_n = 10, 20
@@ -67,6 +84,10 @@ if __name__ == '__main__':
             g.remove_nodes_from(list(nx.isolates(g)))
             if min_n <= g.number_of_nodes() <= max_n:
                 break
+
+        if args.encode:
+            pos_enc = sinusoidal_embedding(g.number_of_nodes(), dim=16)
+            nx.set_node_attributes(g, {i: pos_enc[i] for i in range(len(g))}, 'encoding')
 
         x = {}
         wanted = []
