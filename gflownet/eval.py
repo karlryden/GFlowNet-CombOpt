@@ -31,7 +31,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             sat_fn = get_sat_fn()
             if alg.conditioned:
                 cbatch = [const['constraint'] for const in constbatch]
-                ebatch = torch.stack([const['embedding'] for const in constbatch])
+                ebatch = torch.stack([const['embedding'] for const in constbatch]).to(device)
                 # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
 
         gbatch_rep = dgl.batch([gbatch] * num_repeat)

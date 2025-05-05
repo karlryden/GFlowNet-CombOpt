@@ -35,7 +35,8 @@ class GIN(nn.Module):
         super().__init__()
 
         self.encoding_dim = encoding_dim
-        self.inp_embedding = nn.Embedding(input_dim + encoding_dim, hidden_dim)
+        self.inp_embedding = nn.Embedding(input_dim, hidden_dim)
+        self.inp_transform = nn.Linear(hidden_dim + encoding_dim, hidden_dim)
         self.hidden_dim = hidden_dim
 
         # TODO: Factor out modulation to be composed with the GIN from outside?
@@ -59,8 +60,6 @@ class GIN(nn.Module):
             raise ValueError("Invalid modulation type.")
 
         self.modulation_type = modulation_type
-
-        self.inp_transform = nn.Identity()
 
         self.ginlayers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
@@ -113,12 +112,12 @@ class GIN(nn.Module):
                 raise ValueError(f"Conditioning signal must be either 1D or 2D but has {c.ndimension()} dimensions.")
 
         h = state
+        h = self.inp_embedding(h)
         if 'encoding' in g.ndata and self.encoding_dim > 0:
-            e = g.ndata['encoding']
+            e = g.ndata['encoding'].to(h)
             assert e.shape[1] == self.encoding_dim, f"Positional encoding dimension ({e.shape[1]}) must match GNN encoding dimension ({self.encoding_dim})."
             h = torch.cat([h, e], dim=1)
-        h = self.inp_embedding(h)
-        h = self.inp_transform(h)
+            h = self.inp_transform(h)
 
         if c is not None and self.modulation_type == "concat":
             h = torch.cat([h, C], dim=1)
