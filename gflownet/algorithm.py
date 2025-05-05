@@ -38,9 +38,8 @@ class DetailedBalance(object):
         self.device = device
 
         assert cfg.arch in ["gin"]
-        gin_dict = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.hidden_layer, 
-                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps, 
-                    "aggregator_type": cfg.aggr, "modulation_type": cfg.condition}
+        gin_dict = {"encoding_dim": cfg.encoding_dim, "hidden_dim": cfg.hidden_dim, "num_layers": cfg.hidden_layer, 
+                    "dropout": cfg.dropout, "learn_eps": cfg.learn_eps, "aggregator_type": cfg.aggr, "modulation_type": cfg.condition}
         self.model = GIN(3, 1, graph_level_output=0, **gin_dict).to(device)
         self.model_flow = GIN(3, 0, graph_level_output=1, **gin_dict).to(device)
 

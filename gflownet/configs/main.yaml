@@ -14,6 +14,7 @@ eval_model: none
 
 # for GIN
 arch: gin
+encoding_dim: 16 # positional encoding dimension
 hidden_dim: 256
 hidden_layer: 5
 dropout: 0.

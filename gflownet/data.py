@@ -20,9 +20,9 @@ def read_dgl_from_graph(graph_path):
         _g = pickle.load(graph_file)
     labelled = "optimal" in graph_path.name or "non-optimal" in graph_path.name
     if labelled:
-        g = dgl.from_networkx(_g, node_attrs=['label', 'wanted'])
+        g = dgl.from_networkx(_g, node_attrs=['label', 'encoding', 'wanted'])
     else:
-        g = dgl.from_networkx(_g, node_attrs=['wanted'])
+        g = dgl.from_networkx(_g, node_attrs=['encoding', 'wanted'])
     return g
 
 class GraphDataset(Dataset):

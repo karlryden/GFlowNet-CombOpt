@@ -29,12 +29,13 @@ class MLP_GIN(nn.Module):
         return self.linears[1](h)
 
 class GIN(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=5,
+    def __init__(self, input_dim, output_dim, encoding_dim=16, hidden_dim=128, num_layers=5,
                  graph_level_output=0, learn_eps=False, dropout=0.,
                  aggregator_type="sum", modulation_type="concat"):
         super().__init__()
 
-        self.inp_embedding = nn.Embedding(input_dim, hidden_dim)
+        self.encoding_dim = encoding_dim
+        self.inp_embedding = nn.Embedding(input_dim + encoding_dim, hidden_dim)
         self.hidden_dim = hidden_dim
 
         # TODO: Factor out modulation to be composed with the GIN from outside?
@@ -111,7 +112,12 @@ class GIN(nn.Module):
             else:
                 raise ValueError(f"Conditioning signal must be either 1D or 2D but has {c.ndimension()} dimensions.")
 
-        h = self.inp_embedding(state)
+        h = state
+        if 'encoding' in g.ndata and self.encoding_dim > 0:
+            e = g.ndata['encoding']
+            assert e.shape[1] == self.encoding_dim, f"Positional encoding dimension ({e.shape[1]}) must match GNN encoding dimension ({self.encoding_dim})."
+            h = torch.cat([h, e], dim=1)
+        h = self.inp_embedding(h)
         h = self.inp_transform(h)
 
         if c is not None and self.modulation_type == "concat":
