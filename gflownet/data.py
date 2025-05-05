@@ -18,11 +18,10 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 def read_dgl_from_graph(graph_path):
     with open(graph_path, 'rb') as graph_file:
         _g = pickle.load(graph_file)
-    labelled = "optimal" in graph_path.name or "non-optimal" in graph_path.name
-    if labelled:
-        g = dgl.from_networkx(_g, node_attrs=['label', 'encoding', 'wanted'])
-    else:
-        g = dgl.from_networkx(_g, node_attrs=['encoding', 'wanted'])
+    fields = list(next(iter(_g.nodes(data=True)))[1].keys())
+    if "optimal" in graph_path.name or "non-optimal" in graph_path.name: fields.append('label')
+    g = dgl.from_networkx(_g, node_attrs=fields)
+
     return g
 
 class GraphDataset(Dataset):
