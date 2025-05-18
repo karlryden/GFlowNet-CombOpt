@@ -45,8 +45,8 @@ if __name__ == '__main__':
     if not os.path.isdir("{}".format(args.save_dir)):
         os.makedirs("{}".format(args.save_dir))
     print("Final Output: {}".format(args.save_dir))
-    print(f"Generating {args.num_graph} {args.graph_type} graphs" \
-        + f"with {int(100*args.constrain)}% chance" \
+    print(f"Generating {args.num_graph} {args.graph_type} graphs " \
+        + f"with {int(100*args.constrain)}% chance " \
         + f"of preferring {int(100*args.want)}% of nodes.")
 
     if args.graph_type == "tiny":
