@@ -107,7 +107,7 @@ class DetailedBalance(object):
             cbatch_proj = self.proj(cbatch)
 
             ebatch = gbatch.ndata['encoding'].to(self.device)
-            ebatch_proj = self.proj(ebatch)
+            ebatch_proj = self.proj(ebatch).to(gbatch.device)
             gbatch.ndata['encoding_proj'] = ebatch_proj
         else:
             cbatch_proj = None
@@ -173,7 +173,7 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
             cb_proj = self.proj(cb)
 
             eb = gb.ndata['encoding'].to(self.device)
-            eb_proj = self.proj(eb)
+            eb_proj = self.proj(eb).to(gb.device)
             gb.ndata['encoding_proj'] = eb_proj
         else:
             cb_proj = None
