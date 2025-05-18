@@ -113,7 +113,7 @@ class GIN(nn.Module):
         h = self.inp_embedding(h)
         if 'encoding_proj' in g.ndata:
             e_proj = g.ndata['encoding_proj'].to(h)
-            assert e_proj.shape[1] == self.hidden, f"Positional encoding dimension ({e_proj.shape[1]}) must be projected to GNN hidden dimension ({self.hidden_dim})."
+            assert e_proj.shape[1] == self.hidden_dim, f"Positional encoding dimension ({e_proj.shape[1]}) must be projected to GNN hidden dimension ({self.hidden_dim})."
             h = h + e_proj   # add (projected) positional encoding to embedded state
 
         if c is not None and self.modulation_type == "concat":
