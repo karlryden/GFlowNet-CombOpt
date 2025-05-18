@@ -120,7 +120,12 @@ def embed_constraints(cfg):
                     x = pickle.load(p)
 
                 g = x['graph']
-                nx.set_node_attributes(g, {i: node_encodings[i].cpu().float() for i in range(len(g))}, 'encoding')
+                nx.set_node_attributes(g,
+                    {i: "this is node {i}" for i in range(len(g))},
+                    'identifier')
+                nx.set_node_attributes(g, 
+                    {i: node_encodings[i].cpu().float() for i in range(len(g))}, 
+                    'encoding')
 
                 x['embedding'] = c.cpu().float()
 
