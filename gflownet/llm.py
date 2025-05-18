@@ -8,6 +8,8 @@ from pathlib import Path
 import pickle
 from tqdm import tqdm
 
+import networkx as nx
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -69,6 +71,23 @@ def embed_constraints(cfg):
     consts = []
     files = []
 
+    if "tiny" in cfg.input:
+        max_graph_size = 20
+    elif "small" in cfg.input:
+        max_graph_size = 300
+    elif "large" in cfg.input:
+        max_graph_size = 1200
+    else:
+        raise ValueError(f"Valid graph_type not specified in dataset name: {cfg.input}. Please use 'tiny', 'small', or 'large'.")
+
+    node_identifiers = [f"this is node {i}" for i in range(max_graph_size)]
+    print("Encoding node identifiers...")
+    node_encodings = []
+    for i in tqdm(range(0, len(max_graph_size), cfg.llm_batch.size)):
+        ebatch = get_last_hidden_layer(node_identifiers[i:i+cfg.llm_batch_size], tokenizer, llm)
+        node_encodings.append(ebatch)
+    node_encodings = torch.stack(node_encodings, dim=0)
+
     print("Collecting constraints...")
     for f in pickles:
         with open(f, 'rb') as p:
@@ -84,16 +103,19 @@ def embed_constraints(cfg):
 
         print(f"Embedding {len(consts)} constraints in batches...")
         for i in tqdm(range(0, len(consts), cfg.llm_batch_size)):
-            cbatch = consts[i:i+cfg.llm_batch_size]
+            Cbatch = consts[i:i+cfg.llm_batch_size]
             fbatch = files[i:i+cfg.llm_batch_size]
 
-            ebatch = get_last_hidden_layer(cbatch, tokenizer, llm)
+            cbatch = get_last_hidden_layer(Cbatch, tokenizer, llm)
 
-            for e, f in zip(ebatch, fbatch):
+            for c, f in zip(cbatch, fbatch):
                 with open(f, 'rb') as p:
                     x = pickle.load(p)
 
-                x['embedding'] = e.cpu().float()
+                g = x['graph']
+                nx.set_node_attributes(g, {i: node_encodings[i].cpu().float() for i in range(len(g))}, 'encoding')
+
+                x['embedding'] = c.cpu().float()
 
                 with open(f, 'wb') as p:
                     pickle.dump(x, p, pickle.HIGHEST_PROTOCOL)
