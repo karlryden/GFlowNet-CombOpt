@@ -62,15 +62,7 @@ def get_last_hidden_layer(prompts, tokenizer, model):
     # return mean_pool(last_hidden, inputs["attention_mask"])
     return last_non_padding_token(last_hidden, inputs["attention_mask"])
 
-def embed_constraints(cfg):
-    data_path = Path(__file__).parent.parent / "data"
-    data_path = data_path / Path(cfg.input)  # string to pathlib.Path
-
-    pickles = list(data_path.rglob("*.pickle"))
-
-    consts = []
-    files = []
-
+def encode_nodes(cfg):
     if "tiny" in cfg.input:
         max_graph_size = 20
     elif "small" in cfg.input:
@@ -79,14 +71,26 @@ def embed_constraints(cfg):
         max_graph_size = 1200
     else:
         raise ValueError(f"Valid graph_type not specified in dataset name: {cfg.input}. Please use 'tiny', 'small', or 'large'.")
-
     node_identifiers = [f"this is node {i}" for i in range(max_graph_size)]
-    print("Encoding node identifiers...")
+
+    tokenizer = get_tokenizer(cfg.llm)
+    llm = get_llm(cfg.llm)
+
     node_encodings = []
-    for i in tqdm(range(0, len(max_graph_size), cfg.llm_batch.size)):
+    for i in tqdm(range(0, max_graph_size, cfg.llm_batch_size)):
         ebatch = get_last_hidden_layer(node_identifiers[i:i+cfg.llm_batch_size], tokenizer, llm)
         node_encodings.append(ebatch)
-    node_encodings = torch.stack(node_encodings, dim=0)
+    
+    return torch.cat(node_encodings, dim=0)
+
+def embed_constraints(cfg):
+    data_path = Path(__file__).parent.parent / "data"
+    data_path = data_path / Path(cfg.input)  # string to pathlib.Path
+
+    pickles = list(data_path.rglob("*.pickle"))
+
+    consts = []
+    files = []
 
     print("Collecting constraints...")
     for f in pickles:
@@ -98,11 +102,14 @@ def embed_constraints(cfg):
                 consts.append(x['constraint'])
 
     if consts:
+        print("Encoding node identifiers...")
+        node_encodings = encode_nodes(cfg)
+
         tokenizer = get_tokenizer(cfg.llm)
         llm = get_llm(cfg.llm)
 
         print(f"Embedding {len(consts)} constraints in batches...")
-        for i in tqdm(range(0, len(consts), cfg.llm_batch_size)):
+        for i in tqdm(range(0, len(files), cfg.llm_batch_size)):
             Cbatch = consts[i:i+cfg.llm_batch_size]
             fbatch = files[i:i+cfg.llm_batch_size]
 
