@@ -2,7 +2,7 @@ defaults:
   - override hydra/launcher: submitit_slurm
 
 task: mis
-input: rb200-300_5
+input: rb_small_0
 wandb: 0
 device: 0  # -1 for cpu
 seed: 0
