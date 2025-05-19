@@ -42,7 +42,7 @@ class GIN(nn.Module):
             ...
 
         elif modulation_type == "concat":
-            hidden_dim *= 2
+            self.fuser = nn.Linear(2*hidden_dim, hidden_dim)
 
         elif modulation_type == "film":
             self.films = nn.ModuleList()
@@ -118,6 +118,7 @@ class GIN(nn.Module):
 
         if c is not None and self.modulation_type == "concat":
             h = torch.cat([h, C], dim=1)
+            h = self.fuser(h)
 
         # list of hidden representations at each layer
         hidden_rep = [h]
