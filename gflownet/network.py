@@ -49,7 +49,7 @@ class GIN(nn.Module):
             for _ in range(num_layers - 1):
                 self.films.append(nn.Linear(hidden_dim, 2*hidden_dim))
 
-        elif modulation_type == "attend":
+        elif modulation_type == "attention":
             self.query = nn.Linear(hidden_dim, hidden_dim)
             self.key = nn.Linear(hidden_dim, hidden_dim)
             self.attention = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True)
@@ -128,7 +128,7 @@ class GIN(nn.Module):
                     gamma, beta = film.chunk(2, dim=1)
                     h = gamma * h + beta
 
-                elif self.modulation_type == "attend":
+                elif self.modulation_type == "attention":
                     Q = self.query(h)
                     K = self.key(C)
                     V = K

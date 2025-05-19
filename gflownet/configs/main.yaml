@@ -48,7 +48,7 @@ reward_exp_init: 1
 penalty_coef: 0.3
 
 # Conditioning
-condition: concat # none, concat, film, (attend)
+condition: concat # none, concat, film, attention
 condition_dim: 3072 # check hidden dimension of your LLaMA model
 
 # LLM
