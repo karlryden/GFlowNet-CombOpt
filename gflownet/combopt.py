@@ -166,7 +166,6 @@ class MinDominateSetMDP(GraphCombOptMDP):
     # 2: in set, might be deleted from the set in future steps
     def __init__(self, gbatch, cfg):
         super(MinDominateSetMDP, self).__init__(gbatch, cfg)
-        assert not cfg.back_trajectory
 
     def step(self, action):
         state = self.state.clone()
