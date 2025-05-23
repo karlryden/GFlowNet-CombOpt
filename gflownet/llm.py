@@ -11,18 +11,20 @@ from tqdm import tqdm
 import networkx as nx
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, message="You are using `torch.load` with `weights_only=False`.*")
 
-def get_tokenizer(model_name):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+def get_tokenizer(cfg):
+    tokenizer = AutoTokenizer.from_pretrained(cfg.llm)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     return tokenizer
 
-def get_llm(model_name):
+def get_llama(model_name):
     model = AutoModelForCausalLM.from_pretrained(
         model_name, 
         torch_dtype="auto", 
@@ -30,23 +32,36 @@ def get_llm(model_name):
         device_map="auto"
     )
 
+def get_bert(model_name):
+    model = AutoModel.from_pretrained(
+        model_name, 
+        torch_dtype="auto", 
+        low_cpu_mem_usage=True, 
+        output_hidden_states=True
+    )
+
+    return model
+
+def get_llm(cfg):
+    if "llama" in cfg.llm:
+        model = get_llama(cfg.llm)
+
+    elif "bert" in cfg.llm:
+        model = get_bert(cfg.llm)
+        model.to(cfg.device)
+
+    else:
+        raise ValueError(f"Model {cfg.llm} not supported. Please use BERT or LLaMA model from the Hugging Face Hub.")
+
     model.eval()
 
     return model
 
-def get_last_hidden_layer(prompts, tokenizer, model):
+def get_last_llama_layer(prompts, tokenizer, model):
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
 
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    def mean_pool(hidden_states, attention_mask):
-        # hidden_states: [batch_size, seq_len, hidden_dim]
-        # attention_mask: [batch_size, seq_len]
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size())
-        sum_embeddings = (hidden_states * input_mask_expanded).sum(dim=1)
-        sum_mask = input_mask_expanded.sum(dim=1)
-        return sum_embeddings / sum_mask
 
     def last_non_padding_token(hidden_states, attention_mask):
         seq_lens = attention_mask.sum(dim=1)
@@ -59,8 +74,29 @@ def get_last_hidden_layer(prompts, tokenizer, model):
         outputs = model(**inputs, output_hidden_states=True)
         last_hidden = outputs.hidden_states[-1]
 
-    # return mean_pool(last_hidden, inputs["attention_mask"])
     return last_non_padding_token(last_hidden, inputs["attention_mask"])
+
+def get_last_bert_layer(prompts, tokenizer, model):
+    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
+
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        last_hidden = outputs.last_hidden_state[:,0,:]
+
+    return last_hidden
+
+def get_last_hidden_layer(prompts, tokenizer, model):
+    if "llama" in model.name_or_path:
+        return get_last_llama_layer(prompts, tokenizer, model)
+
+    elif "bert" in model.name_or_path:
+        return get_last_bert_layer(prompts, tokenizer, model)
+    
+    else:
+        raise ValueError(f"Model {model.name_or_path} not supported. Please use BERT or LLaMA model from the Hugging Face Hub.")
 
 def encode_nodes(cfg):
     if "tiny" in cfg.input:
@@ -73,8 +109,8 @@ def encode_nodes(cfg):
         raise ValueError(f"Valid graph_type not specified in dataset name: {cfg.input}. Please use 'tiny', 'small', or 'large'.")
     node_identifiers = [f"this is node {i}" for i in range(max_graph_size)]
 
-    tokenizer = get_tokenizer(cfg.llm)
-    llm = get_llm(cfg.llm)
+    tokenizer = get_tokenizer(cfg)
+    llm = get_llm(cfg)
 
     node_encodings = []
     for i in tqdm(range(0, max_graph_size, cfg.llm_batch_size)):
@@ -105,8 +141,8 @@ def embed_constraints(cfg):
         print("Encoding node identifiers...")
         node_encodings = encode_nodes(cfg)
 
-        tokenizer = get_tokenizer(cfg.llm)
-        llm = get_llm(cfg.llm)
+        tokenizer = get_tokenizer(cfg)
+        llm = get_llm(cfg)
 
         print(f"Embedding {len(consts)} constraints in batches...")
         for i in tqdm(range(0, len(files), cfg.llm_batch_size)):
