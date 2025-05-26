@@ -187,7 +187,7 @@ class DetailedBalanceTransitionBuffer(DetailedBalance):
         total_num_nodes = gb.num_nodes()
         gb_two = dgl.batch([gb, gb])
         s_two = torch.cat([s, s_next], dim=0)
-        cb_proj_two = None if cb_proj is None else torch.repeat_interleave(cb_proj, repeats=2, dim=0)
+        cb_proj_two = None if cb_proj is None else cb_proj.repeat(2, 1)
 
         logits = self.model(gb_two, s_two, c=cb_proj_two)
         _, flows_out = self.model_flow(gb_two, s_two, c=cb_proj_two) # (2 * num_graphs, 1)

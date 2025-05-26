@@ -35,7 +35,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
 
         if cbatch is not None:
             cbatch_proj = alg.proj(cbatch)
-            cbatch_proj_rep = torch.repeat_interleave(cbatch_proj, num_repeat, dim=0)
+            cbatch_proj_rep = cbatch_proj.repeat(num_repeat, 1)
 
             ebatch = gbatch.ndata['encoding'].to(device)
             ebatch_proj = alg.proj(ebatch)
