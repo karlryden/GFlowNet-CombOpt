@@ -20,13 +20,12 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
             gbatch = gbatch.to(device)
-            cbatch, ebatch, sat_fn = None, None, None
+            cbatch, sat_fn = None, None
             if constbatch:
                 sat_fn = get_sat_fn()
                 if alg.conditioned:
-                    cbatch = [const['constraint'] for const in constbatch]
-                    ebatch = torch.stack([const['embedding'] for const in constbatch])
-                    # ebatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
+                    cbatch = torch.stack([const['embedding'] for const in constbatch])
+                    # cbatch = torch.randn(len(constbatch), cfg.condition_dim).to(device)   # NOTE: For testing
 
             process_ratio = max(0., min(1., train_data_used / cfg.annend))
             logr_scaler = get_logr_scaler(cfg, process_ratio)
@@ -36,7 +35,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             train_data_used += gbatch.batch_size
 
             # rollout
-            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=ebatch, critic=sat_fn)
+            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=cbatch, critic=sat_fn)
             buffer.add_batch(batch)
             logr = logr_scaler(batch[-2][:, -1])
             train_logr_scaled_ls += logr.tolist()
