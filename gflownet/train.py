@@ -35,7 +35,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             train_data_used += gbatch.batch_size
 
             # rollout
-            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=cbatch, critic=sat_fn)
+            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=cbatch, critic=lambda gb, s: sat_fn(gb, s)[0])
             buffer.add_batch(batch)
             logr = logr_scaler(batch[-2][:, -1])
             train_logr_scaled_ls += logr.tolist()

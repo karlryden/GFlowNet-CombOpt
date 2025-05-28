@@ -59,7 +59,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             ) for i in range(gbatch.batch_size)]
         jaccard_rep = [batch_jaccard(rep) for rep in reps]
 
-        logr_rep = logr_scaler(env.get_log_reward(critic=sat_fn))    # unpenalized reward is reported for evaluation
+        logr_rep = logr_scaler(env.get_log_reward(critic=lambda gb, s: sat_fn(gb, s)[0]))    # unpenalized reward is reported for evaluation
         logr_ls += logr_rep.tolist()
         curr_mis_rep = torch.tensor(env.batch_metric(state))
         curr_mis_rep = rearrange(curr_mis_rep, "(rep b) -> b rep", rep=num_repeat).float()
@@ -67,9 +67,10 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
         mis_top20_ls += curr_mis_rep.max(dim=1)[0].tolist()
 
         if sat_fn is not None:
-            sat_rep = sat_fn(gbatch_rep, state)
+            sat_rep, mask_rep = sat_fn(gbatch_rep, state)
             sat_rep = rearrange(sat_rep, "(rep b) -> b rep", rep=num_repeat).float()
-            sat_ls += sat_rep.mean(dim=1).tolist()
+            mask_rep = rearrange(mask_rep, "(rep b) -> b rep", rep=num_repeat).float()
+            sat_ls += (sat_rep * mask_rep).mean(dim=1).tolist()
         else:
             sat_ls += [1.0] * gbatch.batch_size
 
