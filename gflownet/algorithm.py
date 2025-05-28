@@ -44,18 +44,19 @@ class DetailedBalance(object):
         self.model = GIN(3, 1, graph_level_output=0, **gin_dict).to(device)
         self.model_flow = GIN(3, 0, graph_level_output=1, **gin_dict).to(device)
 
+        self.params = [
+            {"params": self.model.parameters(), "lr": cfg.lr},
+            {"params": self.model_flow.parameters(), "lr": cfg.zlr},
+        ]
+
         if cfg.condition != 'none': assert cfg.condition_dim > 0, "Conditioning dimension should be greater than 0 -- check config."
         if cfg.condition_dim > 0: assert cfg.condition != 'none', "Conditioning method not defined -- check config."
 
         self.conditioned = (cfg.condition_dim > 0) and (cfg.condition != 'none')
         if self.conditioned:
-            self.proj = nn.Linear(cfg.condition_dim, cfg.hidden_dim)
-            self.proj = self.proj.to(self.device)
+            self.proj = nn.Linear(cfg.condition_dim, cfg.hidden_dim).to(device)
+            self.params.append({"params": self.proj.parameters(), "lr": cfg.lr})
 
-        self.params = [
-            {"params": self.model.parameters(), "lr": cfg.lr},
-            {"params": self.model_flow.parameters(), "lr": cfg.zlr},
-        ]
         self.optimizer = torch.optim.Adam(self.params)
         self.leaf_coef = cfg.leaf_coef
 
