@@ -73,23 +73,23 @@ def get_sat_fn():
 
         start = 0
         sat_rates = []
-        constrain_mask = torch.zeros_like(state, dtype=torch.bool, device=state.device)
+        constrain_mask = []
 
         for k, end in enumerate(cum_num_node):
             w = liable[start:end]
             s = sat[start:end]
 
             if w.sum() == 0:
-                constrain_mask[k] = False
+                constrain_mask.append(False)
                 sat_rates.append(1.0)
 
             else:
-                constrain_mask[k] = True
+                constrain_mask.append(True)
                 sat_rates.append(s.sum() / w.sum())
 
             start = end
 
-        return torch.tensor(sat_rates, device=state.device), constrain_mask
+        return torch.tensor(sat_rates, device=state.device), torch.tensor(constrain_mask, device=state.device)
 
     return sat_fn
 
