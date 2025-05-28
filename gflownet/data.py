@@ -28,6 +28,7 @@ class GraphDataset(Dataset):
     def __init__(self, data_dir=None, size=None):
         assert data_dir is not None
         self.data_dir = data_dir
+        # TODO: Fix this very unsafe way of matching graph and constraint files.
         self.graph_paths = sorted(list(self.data_dir.rglob("*.graph")))
         self.constraint_paths = sorted(list(self.data_dir.rglob("*.pt")))
         if self.constraint_paths:
