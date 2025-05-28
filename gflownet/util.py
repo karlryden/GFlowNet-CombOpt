@@ -72,17 +72,18 @@ def get_sat_fn():
         cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
 
         start = 0
-        sat_rates = torch.empty(gbatch.batch_size, device=state.device)
+        sat_rates = []
 
         for k, end in enumerate(cum_num_node):
             w = liable[start:end]
             s = sat[start:end]
 
-            sat_rates[k] = 1.0 if not w.sum() else s.sum() / w.sum()
+            if w.sum() != 0:
+                sat_rates.append(s.sum() / w.sum())
 
             start = end
 
-        return sat_rates
+        return torch.tensor(sat_rates, device=state.device)
 
     return sat_fn
 
