@@ -10,7 +10,6 @@ print_freq: 3
 wandb_freq: null
 eval: true
 eval_freq: 200
-eval_model: none
 
 # for GIN
 arch: gin
@@ -45,7 +44,7 @@ anneal: linear  # none, linear
 annend: 40000
 reward_exp: 5e2
 reward_exp_init: 1
-penalty_coef: 100
+penalty_coef: 0
 
 # Conditioning
 condition: concat # none, concat, film, attention

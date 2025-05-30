@@ -18,35 +18,11 @@ def main(cfg):
         from llm import embed_constraints
         embed_constraints(cfg)
 
-    if cfg.eval_model == 'none':
-        train_loader, test_loader = get_data_loaders(cfg)
-        alg, buffer = get_alg_buffer(cfg, device)
+    train_loader, test_loader = get_data_loaders(cfg)
+    alg, buffer = get_alg_buffer(cfg, device)
 
-        from train import train_loop
-        train_loop(cfg, device, alg, buffer, train_loader, test_loader)
-
-        if cfg.eval:
-            from eval import evaluate
-            from util import get_logr_scaler
-
-            logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
-            result = {"set_size": {}, "logr_scaled": {}, "sat_rate": {}, "train_step": {}, "train_data_used": {}}
-
-            evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=cfg.epochs)
-
-    else:
-        assert cfg.eval
-        _, test_loader = get_data_loaders(cfg)
-        alg, _ = get_alg_buffer(cfg, device)
-        alg.load(cfg.eval_model)
-
-        from eval import evaluate
-        from util import get_logr_scaler
-
-        logr_scaler = get_logr_scaler(cfg, process_ratio=0.0, reward_exp=None)
-        result = {"set_size": {}, "logr_scaled": {}, "train_step": {}, "train_data_used": {}}
-
-        evaluate(cfg, device, test_loader, alg, 0, 0, logr_scaler, result, ep=0)
+    from train import train_loop
+    train_loop(cfg, device, alg, buffer, train_loader, test_loader)
 
 if __name__ == "__main__":
     main()
