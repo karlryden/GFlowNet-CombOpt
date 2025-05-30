@@ -69,25 +69,26 @@ def get_sat_fn():
         liable = dec & want     # liable to be penalized
         sat = want & inc        # satisfied
 
-        cum_num_node = gbatch.batch_num_nodes().cumsum(dim=0)
+        graphs = dgl.unbatch(gbatch)
+        states = state.split(gbatch.batch_num_nodes().tolist())
 
-        start = 0
         sat_rates = []
         constrain_mask = []
 
-        for k, end in enumerate(cum_num_node):
-            w = liable[start:end]
-            s = sat[start:end]
+        for g, s in zip(graphs, states):
+            want = g.ndata['wanted'].to(dtype=torch.bool)
+            dec = ~(s == 2)
+            inc = (s == 1)
 
-            if w.sum() == 0:
+            liable = dec & want
+            sat = inc & want
+
+            if liable.sum() == 0:
                 constrain_mask.append(False)
                 sat_rates.append(1.0)
-
             else:
                 constrain_mask.append(True)
-                sat_rates.append(s.sum() / w.sum())
-
-            start = end
+                sat_rates.append(sat.sum().item() / liable.sum().item())
 
         return torch.tensor(sat_rates, device=state.device), torch.tensor(constrain_mask, device=state.device)
 
