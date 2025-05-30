@@ -70,7 +70,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             sat_rep, mask_rep = sat_fn(gbatch_rep, state)
             sat_rep = rearrange(sat_rep, "(rep b) -> b rep", rep=num_repeat).float()
             mask_rep = rearrange(mask_rep, "(rep b) -> b rep", rep=num_repeat).float()
-            sat_ls += (sat_rep * mask_rep).mean(dim=1).tolist()
+            sat_ls += ((sat_rep * mask_rep).sum(dim=1) / (mask_rep.sum(dim=1) + 1e-8)).tolist()
         else:
             sat_ls += [1.0] * gbatch.batch_size
 
