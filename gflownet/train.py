@@ -15,7 +15,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
     metric_best = 0.
     alg_save_path = os.path.abspath("./alg.pt")
     alg_save_path_best = os.path.abspath("./alg_best.pt")
-    result = {"set_size": {}, "logr_scaled": {}, "sat_rate": {}, "train_data_used": {}, "train_step": {}}
+    result = {"set_size": {}, "logr_scaled": {}, "jaccard": {}, "sat_rate": {}, "train_data_used": {}, "train_step": {}}
 
     for ep in range(cfg.epochs):
         for batch_idx, (gbatch, constbatch) in enumerate(train_loader):
@@ -35,7 +35,7 @@ def train_loop(cfg, device, alg, buffer, train_loader, test_loader):
             train_data_used += gbatch.batch_size
 
             # rollout
-            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=cbatch, critic=lambda gb, s: sat_fn(gb, s)[0])
+            batch, metric_ls = alg.rollout(gbatch, cfg, cbatch=cbatch, critic=None if sat_fn is None else lambda gb, s: sat_fn(gb, s)[0])
             buffer.add_batch(batch)
             logr = logr_scaler(batch[-2][:, -1])
             train_logr_scaled_ls += logr.tolist()

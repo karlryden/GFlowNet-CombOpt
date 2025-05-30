@@ -59,7 +59,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
             ) for i in range(gbatch.batch_size)]
         jaccard_rep = [batch_jaccard(rep) for rep in reps]
 
-        logr_rep = logr_scaler(env.get_log_reward(critic=lambda gb, s: sat_fn(gb, s)[0]))    # unpenalized reward is reported for evaluation
+        logr_rep = logr_scaler(env.get_log_reward(critic=None if sat_fn is None else lambda gb, s: sat_fn(gb, s)[0]))    # unpenalized reward is reported for evaluation
         logr_ls += logr_rep.tolist()
         curr_mis_rep = torch.tensor(env.batch_metric(state))
         curr_mis_rep = rearrange(curr_mis_rep, "(rep b) -> b rep", rep=num_repeat).float()
@@ -88,6 +88,7 @@ def evaluate(cfg, device, test_loader, alg, train_step, train_data_used, logr_sc
 
     result["set_size"][ep] = np.mean(mis_ls)
     result["logr_scaled"][ep] = np.mean(logr_ls)
+    result["jaccard"][ep] = np.mean(jaccard_rep)
     result["sat_rate"][ep] = np.mean(sat_ls)
     result["train_step"][ep] = train_step
     result["train_data_used"][ep] = train_data_used
