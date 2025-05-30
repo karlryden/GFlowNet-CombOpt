@@ -32,6 +32,8 @@ def get_llama(model_name):
         device_map="auto"
     )
 
+    return model
+
 def get_bert(model_name):
     model = AutoModel.from_pretrained(
         model_name, 
