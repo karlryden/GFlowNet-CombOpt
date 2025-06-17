@@ -2,7 +2,7 @@ defaults:
   - override hydra/launcher: submitit_slurm
 
 task: mis
-input: bert/rb_small_0
+input: rb_small_1
 wandb: 0
 device: 0  # -1 for cpu
 seed: 0
@@ -44,15 +44,13 @@ anneal: linear  # none, linear
 annend: 40000
 reward_exp: 5e2
 reward_exp_init: 1
-penalty_coef: 0
+penalty_coef: 1
 
 # Conditioning
-condition: concat # none, concat, film, attention
-# condition_dim: 3072 # Llama-3.2-3B-Instruct
+condition: film # none, concat, film, attention
 condition_dim: 768  # distilbert/distilbert-base-uncased
 
 # LLM
-# llm: meta-llama/Llama-3.2-3B-Instruct
 llm: distilbert/distilbert-base-uncased
 llm_batch_size: 32
 
