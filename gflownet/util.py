@@ -61,14 +61,6 @@ def get_logr_scaler(cfg, process_ratio=1., reward_exp=None):
 
 def get_sat_fn():
     def sat_fn(gbatch, state):
-        dec = ~(state == 2)      # decided
-        inc = (state == 1)      # included
-
-        want = gbatch.ndata['wanted'].to(dtype=torch.bool)
-
-        liable = dec & want     # liable to be penalized
-        sat = want & inc        # satisfied
-
         graphs = dgl.unbatch(gbatch)
         states = state.split(gbatch.batch_num_nodes().tolist())
 
@@ -76,19 +68,15 @@ def get_sat_fn():
         constrain_mask = []
 
         for g, s in zip(graphs, states):
-            want = g.ndata['wanted'].to(dtype=torch.bool)
-            dec = ~(s == 2)
-            inc = (s == 1)
+            w = g.ndata['wanted'].to(dtype=torch.bool)
+            l = (s != 2) & w
 
-            liable = dec & want
-            sat = inc & want
-
-            if liable.sum() == 0:
+            if l.sum() == 0:
                 constrain_mask.append(False)
                 sat_rates.append(1.0)
             else:
                 constrain_mask.append(True)
-                sat_rates.append(sat.sum().item() / liable.sum().item())
+                sat_rates.append((s & w).sum().item() / l.sum().item())
 
         return torch.tensor(sat_rates, device=state.device), torch.tensor(constrain_mask, device=state.device)
 
